@@ -4,7 +4,7 @@ import path from 'path';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: './',
+  base: './', // Essential for GitHub Pages
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -12,6 +12,7 @@ export default defineConfig({
     },
   },
   server: {
+    // Keeps things stable during development
     hmr: true,
   },
 });
