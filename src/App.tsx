@@ -12,7 +12,9 @@ import {
   Zap,
   SkipForward,
   Smartphone,
-  Maximize2
+  Maximize2,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
 // --- Constants ---
@@ -32,13 +34,13 @@ interface Piece {
 }
 
 const PIECES: Record<PieceType, { shape: number[][]; color: string }> = {
-  I: { shape: [[0, 0, 0, 0], [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0]], color: '#3b82f6' }, // blue-500
-  O: { shape: [[1, 1], [1, 1]], color: '#eab308' }, // yellow-500
-  T: { shape: [[0, 1, 0], [1, 1, 1], [0, 0, 0]], color: '#a855f7' }, // purple-500
-  S: { shape: [[0, 1, 1], [1, 1, 0], [0, 0, 0]], color: '#22c55e' }, // green-500
-  Z: { shape: [[1, 1, 0], [0, 1, 1], [0, 0, 0]], color: '#ef4444' }, // red-500
-  J: { shape: [[1, 0, 0], [1, 1, 1], [0, 0, 0]], color: '#3b82f6' }, // blue-500 (darker)
-  L: { shape: [[0, 0, 1], [1, 1, 1], [0, 0, 0]], color: '#f97316' }, // orange-500
+  I: { shape: [[0, 0, 0, 0], [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0]], color: '#3b82f6' },
+  O: { shape: [[1, 1], [1, 1]], color: '#eab308' },
+  T: { shape: [[0, 1, 0], [1, 1, 1], [0, 0, 0]], color: '#a855f7' },
+  S: { shape: [[0, 1, 1], [1, 1, 0], [0, 0, 0]], color: '#22c55e' },
+  Z: { shape: [[1, 1, 0], [0, 1, 1], [0, 0, 0]], color: '#ef4444' },
+  J: { shape: [[1, 0, 0], [1, 1, 1], [0, 0, 0]], color: '#3b82f6' },
+  L: { shape: [[0, 0, 1], [1, 1, 1], [0, 0, 0]], color: '#f97316' },
 };
 
 const PIECE_TYPES: PieceType[] = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
@@ -69,13 +71,25 @@ export default function App() {
   const [gameOver, setGameOver] = useState(false);
   const [paused, setPaused] = useState(false);
   const [highScore, setHighScore] = useState(0);
-  const [showMobileControls, setShowMobileControls] = useState(false);
+  const [showMobileControls, setShowMobileControls] = useState(window.innerWidth < 1024);
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   const gameLoop = useRef<number>();
   const lastTime = useRef<number>(0);
   const dropCounter = useRef<number>(0);
   const boardRef = useRef<HTMLDivElement>(null);
+
+  // Handle resize
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+      setShowMobileControls(window.innerWidth < 1024);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // --- Game Logic ---
   const checkCollision = useCallback((piece: Piece, newPos = piece.pos, newShape = piece.shape) => {
@@ -88,7 +102,7 @@ export default function App() {
             boardX < 0 ||
             boardX >= COLS ||
             boardY >= ROWS ||
-            (boardY >= 0 && grid[boardY][boardX])
+            (boardY >= 0 && grid[boardY] && grid[boardY][boardX])
           ) {
             return true;
           }
@@ -111,7 +125,7 @@ export default function App() {
         if (cell) {
           const boardY = currentPiece.pos.y + y;
           const boardX = currentPiece.pos.x + x;
-          if (boardY >= 0) {
+          if (boardY >= 0 && boardY < ROWS && boardX >= 0 && boardX < COLS) {
             newGrid[boardY][boardX] = currentPiece.color;
           }
         }
@@ -121,7 +135,7 @@ export default function App() {
     // Clear lines
     let linesCleared = 0;
     const clearedGrid = newGrid.filter(row => {
-      const full = row.every(cell => cell);
+      const full = row.every(cell => cell !== '');
       if (full) linesCleared++;
       return !full;
     });
@@ -136,7 +150,10 @@ export default function App() {
       setScore(prev => prev + (points[linesCleared] * level));
       setLines(prev => {
         const total = prev + linesCleared;
-        setLevel(Math.floor(total / 10) + 1);
+        const newLevel = Math.floor(total / 10) + 1;
+        if (newLevel > level) {
+          setLevel(newLevel);
+        }
         return total;
       });
     }
@@ -183,13 +200,25 @@ export default function App() {
   const hardDrop = useCallback(() => {
     if (!currentPiece || gameOver || paused) return;
 
+    // Calculate final position
     let y = currentPiece.pos.y;
     while (!checkCollision(currentPiece, { ...currentPiece.pos, y: y + 1 })) {
       y++;
     }
 
-    setCurrentPiece({ ...currentPiece, pos: { ...currentPiece.pos, y } });
-    mergePiece();
+    // Create a copy of the piece at the final position
+    const droppedPiece = {
+      ...currentPiece,
+      pos: { ...currentPiece.pos, y }
+    };
+
+    // Merge immediately
+    setCurrentPiece(droppedPiece);
+
+    // Small delay to show the piece at bottom before merging
+    setTimeout(() => {
+      mergePiece();
+    }, 10);
   }, [currentPiece, gameOver, paused, checkCollision, mergePiece]);
 
   const holdCurrentPiece = useCallback(() => {
@@ -274,13 +303,13 @@ export default function App() {
 
   // --- Keyboard Controls ---
   useEffect(() => {
-    const keys: Record<string, boolean> = {};
-    let moveInterval: number;
-
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Prevent default behavior for game controls
+      if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'c', 'C', 'p', 'P', 'r', 'R'].includes(e.key)) {
+        e.preventDefault();
+      }
+
       if (gameOver || paused) return;
-      if (keys[e.key]) return;
-      keys[e.key] = true;
 
       switch (e.key) {
         case 'ArrowLeft': movePiece(-1, 0); break;
@@ -294,15 +323,9 @@ export default function App() {
       }
     };
 
-    const handleKeyUp = (e: KeyboardEvent) => {
-      keys[e.key] = false;
-    };
-
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
     };
   }, [movePiece, rotatePiece, hardDrop, holdCurrentPiece, resetGame, gameOver, paused]);
 
@@ -383,49 +406,57 @@ export default function App() {
             <span className="font-bold text-sm tracking-wider hidden sm:inline">TETRIS PRO</span>
           </div>
           <div className="flex items-center gap-4">
+            <button
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className="p-2 bg-white/10 rounded-xl hover:bg-white/20"
+            >
+              {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+            </button>
             <div className="text-right">
               <div className="text-xs text-white/40">HIGH SCORE</div>
               <div className="font-mono font-bold text-emerald-400">{highScore}</div>
             </div>
-            <button
-              onClick={() => setShowMobileControls(v => !v)}
-              className="sm:hidden p-2 bg-white/10 rounded-xl hover:bg-white/20"
-            >
-              <Smartphone className="w-5 h-5" />
-            </button>
+            {isMobile && (
+              <button
+                onClick={() => setShowMobileControls(v => !v)}
+                className="p-2 bg-white/10 rounded-xl hover:bg-white/20"
+              >
+                <Smartphone className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       {/* Main Game Area */}
-      <div className="pt-20 pb-8 px-4 max-w-6xl mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="pt-20 pb-8 px-2 sm:px-4 max-w-6xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-start">
 
           {/* Left Panel - Hold & Stats */}
           <div className="lg:col-span-3 order-2 lg:order-1">
-            <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-4 space-y-4">
+            <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-3 sm:p-4 space-y-3 sm:space-y-4">
               <div>
-                <h3 className="text-xs font-bold text-white/40 mb-3">HOLD</h3>
-                <div className="bg-black/40 rounded-xl p-4 flex items-center justify-center min-h-[120px]">
-                  {renderPiece(holdPiece, 'w-6 h-6')}
+                <h3 className="text-xs font-bold text-white/40 mb-2 sm:mb-3">HOLD</h3>
+                <div className="bg-black/40 rounded-xl p-3 sm:p-4 flex items-center justify-center min-h-[100px] sm:min-h-[120px]">
+                  {renderPiece(holdPiece, isMobile ? 'w-4 h-4' : 'w-6 h-6')}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-black/40 rounded-xl p-3">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                <div className="bg-black/40 rounded-xl p-2 sm:p-3">
                   <div className="text-xs text-white/40">SCORE</div>
-                  <div className="font-mono font-bold text-lg text-blue-400">{score}</div>
+                  <div className="font-mono font-bold text-base sm:text-lg text-blue-400 truncate">{score}</div>
                 </div>
-                <div className="bg-black/40 rounded-xl p-3">
+                <div className="bg-black/40 rounded-xl p-2 sm:p-3">
                   <div className="text-xs text-white/40">LINES</div>
-                  <div className="font-mono font-bold text-lg text-purple-400">{lines}</div>
+                  <div className="font-mono font-bold text-base sm:text-lg text-purple-400">{lines}</div>
                 </div>
               </div>
 
-              <div className="bg-black/40 rounded-xl p-3">
+              <div className="bg-black/40 rounded-xl p-2 sm:p-3">
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-white/40">LEVEL</span>
-                  <span className="font-mono font-bold text-xl text-orange-400">{level}</span>
+                  <span className="font-mono font-bold text-lg sm:text-xl text-orange-400">{level}</span>
                 </div>
                 <div className="mt-2 h-1.5 bg-white/10 rounded-full overflow-hidden">
                   <div
@@ -436,27 +467,29 @@ export default function App() {
               </div>
 
               {/* Desktop Controls Info */}
-              <div className="hidden lg:block bg-black/40 rounded-xl p-3 text-xs">
-                <div className="font-bold text-white/40 mb-2">CONTROLS</div>
-                <div className="grid grid-cols-2 gap-2 text-white/60">
-                  <div>← → : Move</div>
-                  <div>↑ : Rotate</div>
-                  <div>↓ : Soft Drop</div>
-                  <div>Space : Hard Drop</div>
-                  <div>C : Hold</div>
-                  <div>P : Pause</div>
+              {!isMobile && (
+                <div className="hidden lg:block bg-black/40 rounded-xl p-3 text-xs">
+                  <div className="font-bold text-white/40 mb-2">CONTROLS</div>
+                  <div className="grid grid-cols-2 gap-2 text-white/60">
+                    <div>← → : Move</div>
+                    <div>↑ : Rotate</div>
+                    <div>↓ : Soft Drop</div>
+                    <div>Space : Hard Drop</div>
+                    <div>C : Hold</div>
+                    <div>P : Pause</div>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
           {/* Center - Game Board */}
           <div className="lg:col-span-6 order-1 lg:order-2">
-            <div className="relative aspect-[1/2] max-w-[400px] mx-auto">
+            <div className="relative aspect-[1/2] max-w-[400px] mx-auto w-full">
               {/* Main Board */}
               <div
                 ref={boardRef}
-                className="absolute inset-0 bg-black/40 backdrop-blur-md rounded-3xl border-4 border-white/10 shadow-2xl overflow-hidden"
+                className="absolute inset-0 bg-black/40 backdrop-blur-md rounded-3xl border-4 border-white/10 shadow-2xl overflow-hidden touch-none"
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
@@ -524,13 +557,13 @@ export default function App() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center"
+                      className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-4"
                     >
-                      <Pause className="w-16 h-16 text-white mb-4" />
-                      <h2 className="text-3xl font-black mb-2">PAUSED</h2>
+                      <Pause className="w-12 h-12 sm:w-16 sm:h-16 text-white mb-4" />
+                      <h2 className="text-2xl sm:text-3xl font-black mb-2">PAUSED</h2>
                       <button
                         onClick={() => setPaused(false)}
-                        className="px-8 py-3 bg-white text-black rounded-full font-bold hover:scale-105 transition"
+                        className="px-6 sm:px-8 py-2 sm:py-3 bg-white text-black rounded-full font-bold hover:scale-105 transition text-sm sm:text-base"
                       >
                         RESUME
                       </button>
@@ -541,16 +574,16 @@ export default function App() {
                     <motion.div
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center"
+                      className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6 text-center"
                     >
-                      <Trophy className="w-20 h-20 text-yellow-500 mb-4" />
-                      <h2 className="text-4xl font-black mb-2">GAME OVER</h2>
-                      <p className="text-white/60 mb-6">
+                      <Trophy className="w-16 h-16 sm:w-20 sm:h-20 text-yellow-500 mb-4" />
+                      <h2 className="text-3xl sm:text-4xl font-black mb-2">GAME OVER</h2>
+                      <p className="text-white/60 mb-4 sm:mb-6 text-sm sm:text-base">
                         Level {level} • {score} Points
                       </p>
                       <button
                         onClick={resetGame}
-                        className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl font-bold text-lg hover:opacity-90 transition"
+                        className="w-full py-3 sm:py-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl font-bold text-base sm:text-lg hover:opacity-90 transition"
                       >
                         PLAY AGAIN
                       </button>
@@ -562,97 +595,69 @@ export default function App() {
 
             {/* Mobile Controls */}
             <AnimatePresence>
-              {showMobileControls && (
+              {showMobileControls && isMobile && (
                 <motion.div
                   initial={{ opacity: 0, y: 50 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 50 }}
-                  className="lg:hidden mt-6 grid grid-cols-4 gap-2"
+                  className="mt-4 grid grid-cols-4 gap-2"
                 >
                   <button
                     onClick={() => movePiece(-1, 0)}
-                    className="p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 transition border border-white/10"
+                    className="p-3 sm:p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 active:bg-white/20 transition border border-white/10"
+                    aria-label="Move left"
                   >
-                    <ChevronLeft className="w-6 h-6 mx-auto" />
+                    <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 mx-auto" />
                   </button>
                   <button
                     onClick={() => movePiece(1, 0)}
-                    className="p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 transition border border-white/10"
+                    className="p-3 sm:p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 active:bg-white/20 transition border border-white/10"
+                    aria-label="Move right"
                   >
-                    <ChevronRight className="w-6 h-6 mx-auto" />
+                    <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 mx-auto" />
                   </button>
                   <button
                     onClick={rotatePiece}
-                    className="p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 transition border border-white/10"
+                    className="p-3 sm:p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 active:bg-white/20 transition border border-white/10"
+                    aria-label="Rotate"
                   >
-                    <RotateCw className="w-6 h-6 mx-auto" />
+                    <RotateCw className="w-5 h-5 sm:w-6 sm:h-6 mx-auto" />
                   </button>
                   <button
                     onClick={hardDrop}
-                    className="p-4 bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl active:scale-95 transition"
+                    className="p-3 sm:p-4 bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl active:scale-95 transition"
+                    aria-label="Hard drop"
                   >
-                    <Zap className="w-6 h-6 mx-auto" />
+                    <Zap className="w-5 h-5 sm:w-6 sm:h-6 mx-auto" />
                   </button>
                   <button
                     onClick={holdCurrentPiece}
-                    className="p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 transition border border-white/10 col-span-2"
+                    className="p-3 sm:p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 active:bg-white/20 transition border border-white/10 col-span-2"
+                    aria-label="Hold piece"
                   >
-                    <span className="font-bold text-sm">HOLD</span>
+                    <span className="font-bold text-xs sm:text-sm">HOLD</span>
                   </button>
                   <button
                     onClick={() => setPaused(p => !p)}
-                    className="p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 transition border border-white/10"
+                    className="p-3 sm:p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 active:bg-white/20 transition border border-white/10"
+                    aria-label="Pause"
                   >
-                    {paused ? <Play className="w-6 h-6 mx-auto" /> : <Pause className="w-6 h-6 mx-auto" />}
+                    {paused ? <Play className="w-5 h-5 sm:w-6 sm:h-6 mx-auto" /> : <Pause className="w-5 h-5 sm:w-6 sm:h-6 mx-auto" />}
                   </button>
                   <button
                     onClick={resetGame}
-                    className="p-4 bg-red-500/20 backdrop-blur-md rounded-xl active:scale-95 transition border border-red-500/30"
+                    className="p-3 sm:p-4 bg-red-500/20 backdrop-blur-md rounded-xl active:scale-95 active:bg-red-500/30 transition border border-red-500/30"
+                    aria-label="Reset game"
                   >
-                    <RotateCcw className="w-6 h-6 mx-auto" />
+                    <RotateCcw className="w-5 h-5 sm:w-6 sm:h-6 mx-auto" />
                   </button>
                 </motion.div>
               )}
             </AnimatePresence>
-          </div>
 
-          {/* Right Panel - Next & Actions */}
-          <div className="lg:col-span-3 order-3">
-            <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-4 space-y-4">
-              <div>
-                <h3 className="text-xs font-bold text-white/40 mb-3">NEXT</h3>
-                <div className="bg-black/40 rounded-xl p-4 flex items-center justify-center min-h-[120px]">
-                  {renderPiece(nextPiece, 'w-6 h-6')}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <button
-                  onClick={holdCurrentPiece}
-                  disabled={!canHold || gameOver || paused}
-                  className="w-full py-3 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:hover:bg-white/10 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
-                >
-                  <SkipForward className="w-4 h-4" />
-                  HOLD
-                </button>
-                <button
-                  onClick={() => setPaused(p => !p)}
-                  className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
-                >
-                  {paused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
-                  {paused ? 'RESUME' : 'PAUSE'}
-                </button>
-                <button
-                  onClick={resetGame}
-                  className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  RESET
-                </button>
-              </div>
-
-              {/* Touch hint for mobile */}
-              <div className="lg:hidden bg-blue-500/10 rounded-xl p-3 text-xs text-blue-400">
+            {/* Swipe Hint for Mobile */}
+            {isMobile && !showMobileControls && (
+              <div className="mt-4 bg-blue-500/10 rounded-xl p-3 text-xs text-blue-400">
                 <div className="flex items-center gap-2 mb-1">
                   <Maximize2 className="w-4 h-4" />
                   <span className="font-bold">SWIPE CONTROLS</span>
@@ -661,6 +666,45 @@ export default function App() {
                   Swipe left/right to move • Up to rotate • Down to hard drop
                 </p>
               </div>
+            )}
+          </div>
+
+          {/* Right Panel - Next & Actions */}
+          <div className="lg:col-span-3 order-3">
+            <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-3 sm:p-4 space-y-3 sm:space-y-4">
+              <div>
+                <h3 className="text-xs font-bold text-white/40 mb-2 sm:mb-3">NEXT</h3>
+                <div className="bg-black/40 rounded-xl p-3 sm:p-4 flex items-center justify-center min-h-[100px] sm:min-h-[120px]">
+                  {renderPiece(nextPiece, isMobile ? 'w-4 h-4' : 'w-6 h-6')}
+                </div>
+              </div>
+
+              {!isMobile && (
+                <div className="space-y-2">
+                  <button
+                    onClick={holdCurrentPiece}
+                    disabled={!canHold || gameOver || paused}
+                    className="w-full py-3 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:hover:bg-white/10 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
+                  >
+                    <SkipForward className="w-4 h-4" />
+                    HOLD
+                  </button>
+                  <button
+                    onClick={() => setPaused(p => !p)}
+                    className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
+                  >
+                    {paused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+                    {paused ? 'RESUME' : 'PAUSE'}
+                  </button>
+                  <button
+                    onClick={resetGame}
+                    className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    RESET
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
