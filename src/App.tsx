@@ -1,169 +1,668 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Pause, Play, RotateCcw, Trophy, Gamepad2, 
-  ChevronDown, ChevronLeft, ChevronRight, ArrowUp, Space, Monitor
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Pause,
+  Play,
+  RotateCcw,
+  Trophy,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  RotateCw,
+  Zap,
+  SkipForward,
+  Smartphone,
+  Maximize2
 } from 'lucide-react';
 
-// --- Constants & Themes ---
+// --- Constants ---
 const COLS = 10;
 const ROWS = 20;
-const INITIAL_SPEED = 800;
+const BASE_SPEED = 800;
+const MIN_SPEED = 100;
+const SPEED_STEP = 40;
 
-type PieceType = 'I' | 'J' | 'L' | 'O' | 'S' | 'T' | 'Z';
+type PieceType = 'I' | 'O' | 'T' | 'S' | 'Z' | 'J' | 'L';
+
+interface Piece {
+  type: PieceType;
+  shape: number[][];
+  color: string;
+  pos: { x: number; y: number };
+}
 
 const PIECES: Record<PieceType, { shape: number[][]; color: string }> = {
-  I: { shape: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], color: '#00f0f0' },
-  J: { shape: [[1,0,0],[1,1,1],[0,0,0]], color: '#0000f0' },
-  L: { shape: [[0,0,1],[1,1,1],[0,0,0]], color: '#f0a000' },
-  O: { shape: [[1,1],[1,1]], color: '#f0f000' },
-  S: { shape: [[0,1,1],[1,1,0],[0,0,0]], color: '#00f000' },
-  T: { shape: [[0,1,0],[1,1,1],[0,0,0]], color: '#a000f0' },
-  Z: { shape: [[1,1,0],[0,1,1],[0,0,0]], color: '#f00000' },
+  I: { shape: [[0, 0, 0, 0], [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0]], color: '#3b82f6' }, // blue-500
+  O: { shape: [[1, 1], [1, 1]], color: '#eab308' }, // yellow-500
+  T: { shape: [[0, 1, 0], [1, 1, 1], [0, 0, 0]], color: '#a855f7' }, // purple-500
+  S: { shape: [[0, 1, 1], [1, 1, 0], [0, 0, 0]], color: '#22c55e' }, // green-500
+  Z: { shape: [[1, 1, 0], [0, 1, 1], [0, 0, 0]], color: '#ef4444' }, // red-500
+  J: { shape: [[1, 0, 0], [1, 1, 1], [0, 0, 0]], color: '#3b82f6' }, // blue-500 (darker)
+  L: { shape: [[0, 0, 1], [1, 1, 1], [0, 0, 0]], color: '#f97316' }, // orange-500
 };
 
-const THEMES = {
-  modern: {
-    bg: "bg-[#050505]", gridBg: "bg-white/5", border: "border-white/10",
-    text: "text-emerald-400", blockBorder: "none", ghostAlpha: 0.2
-  },
-  classic: {
-    bg: "bg-[#8bac0f]", gridBg: "bg-[#9bbc0f]", border: "border-[#306230]",
-    text: "text-[#0f380f]", blockBorder: "1px solid #8bac0f", ghostAlpha: 0.1
-  }
+const PIECE_TYPES: PieceType[] = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
+
+// --- Helpers ---
+const createEmptyGrid = () => Array(ROWS).fill(null).map(() => Array(COLS).fill(''));
+
+const getRandomPiece = (): Piece => {
+  const type = PIECE_TYPES[Math.floor(Math.random() * PIECE_TYPES.length)];
+  const piece = PIECES[type];
+  return {
+    type,
+    shape: piece.shape.map(row => [...row]),
+    color: piece.color,
+    pos: { x: Math.floor(COLS / 2) - Math.floor(piece.shape[0].length / 2), y: 0 },
+  };
 };
 
 export default function App() {
-  const [theme, setTheme] = useState<'modern' | 'classic'>('modern');
-  const [grid, setGrid] = useState<any[][]>(Array.from({ length: ROWS }, () => Array(COLS).fill(0)));
-  const [activePiece, setActivePiece] = useState<any>(null);
-  const [bag, setBag] = useState<PieceType[]>([]);
+  const [grid, setGrid] = useState(createEmptyGrid());
+  const [currentPiece, setCurrentPiece] = useState<Piece | null>(null);
+  const [nextPiece, setNextPiece] = useState<Piece>(getRandomPiece());
+  const [holdPiece, setHoldPiece] = useState<Piece | null>(null);
+  const [canHold, setCanHold] = useState(true);
   const [score, setScore] = useState(0);
+  const [lines, setLines] = useState(0);
+  const [level, setLevel] = useState(1);
   const [gameOver, setGameOver] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [highScore, setHighScore] = useState(0);
+  const [showMobileControls, setShowMobileControls] = useState(false);
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
 
-  const curTheme = THEMES[theme];
+  const gameLoop = useRef<number>();
+  const lastTime = useRef<number>(0);
+  const dropCounter = useRef<number>(0);
+  const boardRef = useRef<HTMLDivElement>(null);
 
-  // Professional 7-Bag Randomizer
-  const getNextFromBag = useCallback(() => {
-    let currentBag = [...bag];
-    if (currentBag.length === 0) {
-      currentBag = (['I', 'J', 'L', 'O', 'S', 'T', 'Z'] as PieceType[])
-        .sort(() => Math.random() - 0.5);
+  // --- Game Logic ---
+  const checkCollision = useCallback((piece: Piece, newPos = piece.pos, newShape = piece.shape) => {
+    for (let y = 0; y < newShape.length; y++) {
+      for (let x = 0; x < newShape[y].length; x++) {
+        if (newShape[y][x]) {
+          const boardX = newPos.x + x;
+          const boardY = newPos.y + y;
+          if (
+            boardX < 0 ||
+            boardX >= COLS ||
+            boardY >= ROWS ||
+            (boardY >= 0 && grid[boardY][boardX])
+          ) {
+            return true;
+          }
+        }
+      }
     }
-    const type = currentBag.pop()!;
-    setBag(currentBag);
-    return {
-      type,
-      shape: PIECES[type].shape,
-      color: PIECES[type].color,
-      pos: { x: 3, y: 0 }
-    };
-  }, [bag]);
+    return false;
+  }, [grid]);
 
-  const checkCollision = (piece: any, pos = piece.pos, shape = piece.shape) => {
-    return shape.some((row: any[], y: number) => row.some((cell, x) => {
-      if (!cell) return false;
-      const nx = pos.x + x, ny = pos.y + y;
-      return nx < 0 || nx >= COLS || ny >= ROWS || (ny >= 0 && grid[ny][nx]);
-    }));
+  const rotateShape = (shape: number[][]) => {
+    return shape[0].map((_, i) => shape.map(row => row[i]).reverse());
   };
+
+  const mergePiece = useCallback(() => {
+    if (!currentPiece) return;
+
+    const newGrid = grid.map(row => [...row]);
+    currentPiece.shape.forEach((row, y) => {
+      row.forEach((cell, x) => {
+        if (cell) {
+          const boardY = currentPiece.pos.y + y;
+          const boardX = currentPiece.pos.x + x;
+          if (boardY >= 0) {
+            newGrid[boardY][boardX] = currentPiece.color;
+          }
+        }
+      });
+    });
+
+    // Clear lines
+    let linesCleared = 0;
+    const clearedGrid = newGrid.filter(row => {
+      const full = row.every(cell => cell);
+      if (full) linesCleared++;
+      return !full;
+    });
+
+    while (clearedGrid.length < ROWS) {
+      clearedGrid.unshift(Array(COLS).fill(''));
+    }
+
+    // Update score
+    if (linesCleared > 0) {
+      const points = [0, 100, 300, 500, 800];
+      setScore(prev => prev + (points[linesCleared] * level));
+      setLines(prev => {
+        const total = prev + linesCleared;
+        setLevel(Math.floor(total / 10) + 1);
+        return total;
+      });
+    }
+
+    setGrid(clearedGrid);
+    setCurrentPiece(null);
+    setCanHold(true);
+  }, [currentPiece, grid, level]);
 
   const spawnPiece = useCallback(() => {
-    const next = getNextFromBag();
-    if (checkCollision(next)) setGameOver(true);
-    else setActivePiece(next);
-  }, [getNextFromBag, grid]);
+    const piece = { ...nextPiece };
+    if (checkCollision(piece)) {
+      setGameOver(true);
+      return;
+    }
+    setCurrentPiece(piece);
+    setNextPiece(getRandomPiece());
+  }, [nextPiece, checkCollision]);
 
-  const lockPiece = useCallback(() => {
-    const newGrid = grid.map(row => [...row]);
-    activePiece.shape.forEach((row: any[], y: number) => row.forEach((cell, x) => {
-      if (cell) newGrid[activePiece.pos.y + y][activePiece.pos.x + x] = activePiece.color;
-    }));
-    const filtered = newGrid.filter(row => !row.every(c => c !== 0));
-    const cleared = ROWS - filtered.length;
-    while (filtered.length < ROWS) filtered.unshift(Array(COLS).fill(0));
-    setScore(s => s + (cleared * 100));
-    setGrid(filtered);
-    setActivePiece(null);
-  }, [activePiece, grid]);
+  const movePiece = useCallback((dx: number, dy: number) => {
+    if (!currentPiece || gameOver || paused) return false;
 
-  const move = (dx: number, dy: number) => {
-    if (!activePiece || paused || gameOver) return;
-    const newPos = { x: activePiece.pos.x + dx, y: activePiece.pos.y + dy };
-    if (!checkCollision(activePiece, newPos)) setActivePiece({ ...activePiece, pos: newPos });
-    else if (dy > 0) lockPiece();
-  };
+    const newPos = { x: currentPiece.pos.x + dx, y: currentPiece.pos.y + dy };
+    if (!checkCollision(currentPiece, newPos)) {
+      setCurrentPiece({ ...currentPiece, pos: newPos });
+      return true;
+    }
 
-  const rotate = () => {
-    if (!activePiece) return;
-    const shape = activePiece.shape[0].map((_: any, i: number) => activePiece.shape.map((row: any[]) => row[i]).reverse());
-    if (!checkCollision(activePiece, activePiece.pos, shape)) setActivePiece({ ...activePiece, shape });
-  };
+    if (dy > 0) {
+      mergePiece();
+    }
+    return false;
+  }, [currentPiece, gameOver, paused, checkCollision, mergePiece]);
+
+  const rotatePiece = useCallback(() => {
+    if (!currentPiece || gameOver || paused) return;
+
+    const rotated = rotateShape(currentPiece.shape);
+    if (!checkCollision(currentPiece, currentPiece.pos, rotated)) {
+      setCurrentPiece({ ...currentPiece, shape: rotated });
+    }
+  }, [currentPiece, gameOver, paused, checkCollision]);
+
+  const hardDrop = useCallback(() => {
+    if (!currentPiece || gameOver || paused) return;
+
+    let y = currentPiece.pos.y;
+    while (!checkCollision(currentPiece, { ...currentPiece.pos, y: y + 1 })) {
+      y++;
+    }
+
+    setCurrentPiece({ ...currentPiece, pos: { ...currentPiece.pos, y } });
+    mergePiece();
+  }, [currentPiece, gameOver, paused, checkCollision, mergePiece]);
+
+  const holdCurrentPiece = useCallback(() => {
+    if (!currentPiece || !canHold || gameOver || paused) return;
+
+    if (!holdPiece) {
+      setHoldPiece(currentPiece);
+      setCurrentPiece(null);
+      spawnPiece();
+    } else {
+      const temp = currentPiece;
+      setCurrentPiece({
+        ...holdPiece,
+        pos: { x: Math.floor(COLS / 2) - 1, y: 0 }
+      });
+      setHoldPiece(temp);
+    }
+    setCanHold(false);
+  }, [currentPiece, holdPiece, canHold, gameOver, paused, spawnPiece]);
+
+  const resetGame = useCallback(() => {
+    setGrid(createEmptyGrid());
+    setScore(0);
+    setLines(0);
+    setLevel(1);
+    setGameOver(false);
+    setPaused(false);
+    setHoldPiece(null);
+    setCanHold(true);
+    const first = getRandomPiece();
+    const second = getRandomPiece();
+    setCurrentPiece(first);
+    setNextPiece(second);
+  }, []);
+
+  // --- Game Loop ---
+  const gameUpdate = useCallback((time: number) => {
+    if (paused || gameOver || !currentPiece) {
+      gameLoop.current = requestAnimationFrame(gameUpdate);
+      return;
+    }
+
+    const delta = time - lastTime.current;
+    lastTime.current = time;
+    dropCounter.current += delta;
+
+    const speed = Math.max(MIN_SPEED, BASE_SPEED - (level - 1) * SPEED_STEP);
+
+    if (dropCounter.current > speed) {
+      movePiece(0, 1);
+      dropCounter.current = 0;
+    }
+
+    gameLoop.current = requestAnimationFrame(gameUpdate);
+  }, [paused, gameOver, currentPiece, level, movePiece]);
 
   useEffect(() => {
-    if (!activePiece && !gameOver) spawnPiece();
-    const id = setInterval(() => move(0, 1), INITIAL_SPEED);
-    return () => clearInterval(id);
-  }, [activePiece, gameOver, spawnPiece]);
+    gameLoop.current = requestAnimationFrame(gameUpdate);
+    return () => {
+      if (gameLoop.current) cancelAnimationFrame(gameLoop.current);
+    };
+  }, [gameUpdate]);
 
-  // Ghost Calculation
+  useEffect(() => {
+    if (!currentPiece && !gameOver) {
+      spawnPiece();
+    }
+  }, [currentPiece, gameOver, spawnPiece]);
+
+  // --- High Score ---
+  useEffect(() => {
+    const saved = localStorage.getItem('tetris-highscore');
+    if (saved) setHighScore(parseInt(saved));
+  }, []);
+
+  useEffect(() => {
+    if (score > highScore) {
+      setHighScore(score);
+      localStorage.setItem('tetris-highscore', score.toString());
+    }
+  }, [score, highScore]);
+
+  // --- Keyboard Controls ---
+  useEffect(() => {
+    const keys: Record<string, boolean> = {};
+    let moveInterval: number;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (gameOver || paused) return;
+      if (keys[e.key]) return;
+      keys[e.key] = true;
+
+      switch (e.key) {
+        case 'ArrowLeft': movePiece(-1, 0); break;
+        case 'ArrowRight': movePiece(1, 0); break;
+        case 'ArrowDown': movePiece(0, 1); break;
+        case 'ArrowUp': rotatePiece(); break;
+        case ' ': hardDrop(); break;
+        case 'c': case 'C': holdCurrentPiece(); break;
+        case 'p': case 'P': setPaused(p => !p); break;
+        case 'r': case 'R': resetGame(); break;
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      keys[e.key] = false;
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [movePiece, rotatePiece, hardDrop, holdCurrentPiece, resetGame, gameOver, paused]);
+
+  // --- Touch Controls ---
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    setTouchStart({ x: touch.clientX, y: touch.clientY });
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    e.preventDefault();
+    if (!touchStart || !currentPiece || gameOver || paused) return;
+
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - touchStart.x;
+    const dy = touch.clientY - touchStart.y;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    if (Math.max(absDx, absDy) < 20) return;
+
+    if (absDx > absDy) {
+      // Horizontal swipe
+      if (dx > 0) movePiece(1, 0);
+      else movePiece(-1, 0);
+    } else {
+      // Vertical swipe
+      if (dy > 0) hardDrop();
+      else rotatePiece();
+    }
+
+    setTouchStart(null);
+  };
+
+  // --- Ghost Piece Position ---
   const getGhostY = () => {
-    if (!activePiece) return 0;
-    let gy = activePiece.pos.y;
-    while (!checkCollision(activePiece, { ...activePiece.pos, y: gy + 1 })) gy++;
-    return gy;
+    if (!currentPiece) return null;
+    let y = currentPiece.pos.y;
+    while (!checkCollision(currentPiece, { ...currentPiece.pos, y: y + 1 })) {
+      y++;
+    }
+    return y;
+  };
+
+  const ghostY = getGhostY();
+
+  // --- Render Piece Preview ---
+  const renderPiece = (piece: Piece | null, size = 'w-5 h-5') => {
+    if (!piece) return null;
+
+    return (
+      <div className="grid grid-cols-4 gap-0.5">
+        {piece.shape.map((row, y) =>
+          row.map((cell, x) => (
+            <div
+              key={`${y}-${x}`}
+              className={`${size} rounded-sm ${cell ? '' : 'opacity-0'}`}
+              style={{ backgroundColor: cell ? piece.color : 'transparent' }}
+            />
+          ))
+        )}
+      </div>
+    );
   };
 
   return (
-    <div className={`min-h-screen ${curTheme.bg} transition-colors flex flex-col items-center justify-center p-4 touch-none`}>
-      <button onClick={() => setTheme(t => t === 'modern' ? 'classic' : 'modern')} className="fixed top-6 right-6 p-3 bg-white/10 rounded-full border border-white/20">
-        <Monitor className={curTheme.text} />
-      </button>
-
-      <div className="flex flex-col lg:flex-row gap-8 items-start">
-        <div className={`${curTheme.gridBg} border ${curTheme.border} rounded-2xl p-4 w-32`}>
-          <p className={`text-[10px] uppercase font-bold opacity-50 ${curTheme.text}`}>Score</p>
-          <p className={`text-xl font-mono ${curTheme.text}`}>{score}</p>
-        </div>
-
-        <div className={`relative border-4 ${curTheme.border} rounded-3xl p-1 bg-white/5`}>
-          <div className="grid grid-cols-10 gap-px w-[280px] h-[560px]">
-            {grid.map((row, y) => row.map((cell, x) => {
-              let color = cell || 'transparent';
-              let opacity = cell ? 1 : 0.05;
-              if (activePiece) {
-                const py = y - activePiece.pos.y, px = x - activePiece.pos.x;
-                const gy = y - getGhostY();
-                if (py >= 0 && py < activePiece.shape.length && px >= 0 && px < activePiece.shape[0].length && activePiece.shape[py][px]) {
-                  color = theme === 'classic' ? '#306230' : activePiece.color;
-                  opacity = 1;
-                } else if (gy >= 0 && gy < activePiece.shape.length && px >= 0 && px < activePiece.shape[0].length && activePiece.shape[gy][px]) {
-                  color = theme === 'classic' ? '#306230' : activePiece.color;
-                  opacity = curTheme.ghostAlpha;
-                }
-              }
-              return <div key={`${y}-${x}`} style={{ backgroundColor: color, opacity, border: cell ? curTheme.blockBorder : 'none' }} className="w-full h-full rounded-sm" />;
-            }))}
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white">
+      {/* Header */}
+      <div className="fixed top-0 left-0 right-0 bg-black/50 backdrop-blur-lg border-b border-white/10 z-10">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center font-black text-lg">T</div>
+            <span className="font-bold text-sm tracking-wider hidden sm:inline">TETRIS PRO</span>
           </div>
-          {gameOver && <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center rounded-2xl">
-            <Trophy className="text-yellow-500 w-12 h-12 mb-2" />
-            <button onClick={() => window.location.reload()} className="bg-emerald-500 px-6 py-2 rounded-full font-bold">RETRY</button>
-          </div>}
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <div className="text-xs text-white/40">HIGH SCORE</div>
+              <div className="font-mono font-bold text-emerald-400">{highScore}</div>
+            </div>
+            <button
+              onClick={() => setShowMobileControls(v => !v)}
+              className="sm:hidden p-2 bg-white/10 rounded-xl hover:bg-white/20"
+            >
+              <Smartphone className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+      </div>
 
-        {/* Mobile Controls */}
-        <div className="grid grid-cols-3 gap-4 lg:hidden">
-          <button onClick={() => move(-1, 0)} className="p-6 bg-white/10 rounded-2xl"><ChevronLeft /></button>
-          <button onClick={rotate} className="p-6 bg-white/10 rounded-2xl"><ArrowUp /></button>
-          <button onClick={() => move(1, 0)} className="p-6 bg-white/10 rounded-2xl"><ChevronRight /></button>
-          <div />
-          <button onClick={() => move(0, 1)} className="p-6 bg-white/10 rounded-2xl"><ChevronDown /></button>
+      {/* Main Game Area */}
+      <div className="pt-20 pb-8 px-4 max-w-6xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+          {/* Left Panel - Hold & Stats */}
+          <div className="lg:col-span-3 order-2 lg:order-1">
+            <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-4 space-y-4">
+              <div>
+                <h3 className="text-xs font-bold text-white/40 mb-3">HOLD</h3>
+                <div className="bg-black/40 rounded-xl p-4 flex items-center justify-center min-h-[120px]">
+                  {renderPiece(holdPiece, 'w-6 h-6')}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-black/40 rounded-xl p-3">
+                  <div className="text-xs text-white/40">SCORE</div>
+                  <div className="font-mono font-bold text-lg text-blue-400">{score}</div>
+                </div>
+                <div className="bg-black/40 rounded-xl p-3">
+                  <div className="text-xs text-white/40">LINES</div>
+                  <div className="font-mono font-bold text-lg text-purple-400">{lines}</div>
+                </div>
+              </div>
+
+              <div className="bg-black/40 rounded-xl p-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-white/40">LEVEL</span>
+                  <span className="font-mono font-bold text-xl text-orange-400">{level}</span>
+                </div>
+                <div className="mt-2 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
+                    style={{ width: `${(lines % 10) * 10}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Desktop Controls Info */}
+              <div className="hidden lg:block bg-black/40 rounded-xl p-3 text-xs">
+                <div className="font-bold text-white/40 mb-2">CONTROLS</div>
+                <div className="grid grid-cols-2 gap-2 text-white/60">
+                  <div>← → : Move</div>
+                  <div>↑ : Rotate</div>
+                  <div>↓ : Soft Drop</div>
+                  <div>Space : Hard Drop</div>
+                  <div>C : Hold</div>
+                  <div>P : Pause</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Center - Game Board */}
+          <div className="lg:col-span-6 order-1 lg:order-2">
+            <div className="relative aspect-[1/2] max-w-[400px] mx-auto">
+              {/* Main Board */}
+              <div
+                ref={boardRef}
+                className="absolute inset-0 bg-black/40 backdrop-blur-md rounded-3xl border-4 border-white/10 shadow-2xl overflow-hidden"
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+              >
+                <div
+                  className="grid h-full"
+                  style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)` }}
+                >
+                  {grid.map((row, y) =>
+                    row.map((cell, x) => {
+                      let bgColor = cell || '#0f172a';
+                      let opacity = cell ? 1 : 0.3;
+
+                      // Current piece
+                      if (currentPiece) {
+                        const pieceY = y - currentPiece.pos.y;
+                        const pieceX = x - currentPiece.pos.x;
+                        if (
+                          pieceY >= 0 &&
+                          pieceY < currentPiece.shape.length &&
+                          pieceX >= 0 &&
+                          pieceX < currentPiece.shape[0].length &&
+                          currentPiece.shape[pieceY][pieceX]
+                        ) {
+                          bgColor = currentPiece.color;
+                          opacity = 1;
+                        }
+                      }
+
+                      // Ghost piece
+                      if (ghostY !== null && currentPiece && !cell) {
+                        const ghostY_rel = y - ghostY;
+                        const ghostX = x - currentPiece.pos.x;
+                        if (
+                          ghostY_rel >= 0 &&
+                          ghostY_rel < currentPiece.shape.length &&
+                          ghostX >= 0 &&
+                          ghostX < currentPiece.shape[0].length &&
+                          currentPiece.shape[ghostY_rel][ghostX]
+                        ) {
+                          bgColor = currentPiece.color;
+                          opacity = 0.15;
+                        }
+                      }
+
+                      return (
+                        <div
+                          key={`${y}-${x}`}
+                          className="border-[0.5px] border-white/5"
+                          style={{
+                            backgroundColor: bgColor,
+                            opacity,
+                            boxShadow: cell ? `inset 0 0 10px ${bgColor}80` : 'none'
+                          }}
+                        />
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Overlays */}
+                <AnimatePresence>
+                  {paused && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center"
+                    >
+                      <Pause className="w-16 h-16 text-white mb-4" />
+                      <h2 className="text-3xl font-black mb-2">PAUSED</h2>
+                      <button
+                        onClick={() => setPaused(false)}
+                        className="px-8 py-3 bg-white text-black rounded-full font-bold hover:scale-105 transition"
+                      >
+                        RESUME
+                      </button>
+                    </motion.div>
+                  )}
+
+                  {gameOver && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center"
+                    >
+                      <Trophy className="w-20 h-20 text-yellow-500 mb-4" />
+                      <h2 className="text-4xl font-black mb-2">GAME OVER</h2>
+                      <p className="text-white/60 mb-6">
+                        Level {level} • {score} Points
+                      </p>
+                      <button
+                        onClick={resetGame}
+                        className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl font-bold text-lg hover:opacity-90 transition"
+                      >
+                        PLAY AGAIN
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+
+            {/* Mobile Controls */}
+            <AnimatePresence>
+              {showMobileControls && (
+                <motion.div
+                  initial={{ opacity: 0, y: 50 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 50 }}
+                  className="lg:hidden mt-6 grid grid-cols-4 gap-2"
+                >
+                  <button
+                    onClick={() => movePiece(-1, 0)}
+                    className="p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 transition border border-white/10"
+                  >
+                    <ChevronLeft className="w-6 h-6 mx-auto" />
+                  </button>
+                  <button
+                    onClick={() => movePiece(1, 0)}
+                    className="p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 transition border border-white/10"
+                  >
+                    <ChevronRight className="w-6 h-6 mx-auto" />
+                  </button>
+                  <button
+                    onClick={rotatePiece}
+                    className="p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 transition border border-white/10"
+                  >
+                    <RotateCw className="w-6 h-6 mx-auto" />
+                  </button>
+                  <button
+                    onClick={hardDrop}
+                    className="p-4 bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl active:scale-95 transition"
+                  >
+                    <Zap className="w-6 h-6 mx-auto" />
+                  </button>
+                  <button
+                    onClick={holdCurrentPiece}
+                    className="p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 transition border border-white/10 col-span-2"
+                  >
+                    <span className="font-bold text-sm">HOLD</span>
+                  </button>
+                  <button
+                    onClick={() => setPaused(p => !p)}
+                    className="p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 transition border border-white/10"
+                  >
+                    {paused ? <Play className="w-6 h-6 mx-auto" /> : <Pause className="w-6 h-6 mx-auto" />}
+                  </button>
+                  <button
+                    onClick={resetGame}
+                    className="p-4 bg-red-500/20 backdrop-blur-md rounded-xl active:scale-95 transition border border-red-500/30"
+                  >
+                    <RotateCcw className="w-6 h-6 mx-auto" />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Right Panel - Next & Actions */}
+          <div className="lg:col-span-3 order-3">
+            <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-4 space-y-4">
+              <div>
+                <h3 className="text-xs font-bold text-white/40 mb-3">NEXT</h3>
+                <div className="bg-black/40 rounded-xl p-4 flex items-center justify-center min-h-[120px]">
+                  {renderPiece(nextPiece, 'w-6 h-6')}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <button
+                  onClick={holdCurrentPiece}
+                  disabled={!canHold || gameOver || paused}
+                  className="w-full py-3 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:hover:bg-white/10 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
+                >
+                  <SkipForward className="w-4 h-4" />
+                  HOLD
+                </button>
+                <button
+                  onClick={() => setPaused(p => !p)}
+                  className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
+                >
+                  {paused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+                  {paused ? 'RESUME' : 'PAUSE'}
+                </button>
+                <button
+                  onClick={resetGame}
+                  className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  RESET
+                </button>
+              </div>
+
+              {/* Touch hint for mobile */}
+              <div className="lg:hidden bg-blue-500/10 rounded-xl p-3 text-xs text-blue-400">
+                <div className="flex items-center gap-2 mb-1">
+                  <Maximize2 className="w-4 h-4" />
+                  <span className="font-bold">SWIPE CONTROLS</span>
+                </div>
+                <p className="text-white/60">
+                  Swipe left/right to move • Up to rotate • Down to hard drop
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
