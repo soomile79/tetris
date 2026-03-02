@@ -1127,7 +1127,7 @@ export default function App() {
             width: '100%',
             height: '100%',
             aspectRatio: '10 / 20',
-            maxWidth: 'min(100%, calc(100vh * 0.5))',
+            maxWidth: 'min(100%, calc(100vh * 0.4))',
           }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
