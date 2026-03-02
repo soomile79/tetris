@@ -59,7 +59,7 @@ const getRandomPiece = (): Piece => {
   };
 };
 
-// --- Audio Manager (same as before) ---
+// --- Audio Manager ---
 class AudioManager {
   private context: AudioContext | null = null;
   private musicNodes: {
@@ -344,7 +344,7 @@ export default function App() {
     }
   }, [level, musicEnabled]);
 
-  // --- Game Logic (same as before) ---
+  // --- Game Logic ---
   const checkCollision = useCallback((piece: Piece, newPos = piece.pos, newShape = piece.shape) => {
     for (let y = 0; y < newShape.length; y++) {
       for (let x = 0; x < newShape[y].length; x++) {
@@ -716,11 +716,11 @@ export default function App() {
     );
   };
 
-  // Desktop Layout (unchanged)
+  // Desktop Layout
   if (deviceType === 'desktop') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white">
-        {/* Desktop header - same as before */}
+        {/* Desktop header */}
         <div className="fixed top-0 left-0 right-0 bg-black/50 backdrop-blur-lg border-b border-white/10 z-10">
           <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -752,15 +752,17 @@ export default function App() {
           </div>
         </div>
 
-        {/* Desktop game area - same as before */}
+        {/* Desktop game area */}
         <div className="pt-20 pb-8 px-4 max-w-6xl mx-auto">
           <div className="grid grid-cols-12 gap-6 items-start">
+            {/* Left Panel - Hold */}
             <div className="col-span-2">
               <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-4">
                 <h3 className="text-xs font-bold text-white/40 mb-3">HOLD</h3>
                 <div className="bg-black/40 rounded-xl p-4 flex items-center justify-center min-h-[120px]">
                   {renderPiece(holdPiece, 'w-6 h-6')}
                 </div>
+
                 <div className="mt-4 space-y-2">
                   <div className="bg-black/40 rounded-xl p-3">
                     <div className="text-xs text-white/40">SCORE</div>
@@ -774,6 +776,7 @@ export default function App() {
               </div>
             </div>
 
+            {/* Center - Game Board */}
             <div className="col-span-8">
               <div className="relative aspect-[1/2] max-w-[400px] mx-auto">
                 <div className="absolute inset-0 bg-black/40 backdrop-blur-md rounded-3xl border-4 border-white/10 shadow-2xl overflow-hidden">
@@ -892,6 +895,7 @@ export default function App() {
               </div>
             </div>
 
+            {/* Right Panel - Next */}
             <div className="col-span-2">
               <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-4">
                 <h3 className="text-xs font-bold text-white/40 mb-3">NEXT</h3>
@@ -908,9 +912,8 @@ export default function App() {
                   <button
                     onClick={holdCurrentPiece}
                     disabled={!canHold || gameOver || paused}
-                    className="w-full py-3 bg-white/10 hover:bg-white/20 disabled:opacity-50 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
+                    className="w-full py-3 bg-white/10 hover:bg-white/20 disabled:opacity-50 rounded-xl font-bold text-sm transition"
                   >
-                    <SkipForward className="w-4 h-4" />
                     HOLD
                   </button>
 
@@ -936,167 +939,169 @@ export default function App() {
     );
   }
 
-  // Mobile Layout - COMPACT VERSION THAT FITS ON SCREEN
+  // Mobile Layout - COMPACT VERSION WITH VISIBLE BUTTONS
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white">
-      {/* Mobile Header - Compact */}
-      <div className="fixed top-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-b border-white/10 z-10 px-3 py-1">
+      {/* Mobile Header - Ultra Compact */}
+      <div className="fixed top-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-b border-white/10 z-10 px-2 py-1">
         <div className="flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-blue-500 rounded-lg flex items-center justify-center font-black text-sm">T</div>
+          <div className="flex items-center gap-1">
+            <div className="w-6 h-6 bg-blue-500 rounded-lg flex items-center justify-center font-black text-xs">T</div>
             <span className="font-bold text-xs">TETRIS</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setMusicEnabled(!musicEnabled)}
               className="p-1.5 bg-white/20 rounded-lg active:bg-white/30"
             >
-              {musicEnabled ? <Music2 className="w-4 h-4" /> : <Music className="w-4 h-4" />}
+              {musicEnabled ? <Music2 className="w-3.5 h-3.5" /> : <Music className="w-3.5 h-3.5" />}
             </button>
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
               className="p-1.5 bg-white/20 rounded-lg active:bg-white/30"
             >
-              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Mobile Score Bar - Compact */}
-      <div className="fixed top-10 left-0 right-0 bg-black/70 backdrop-blur-sm border-b border-white/10 z-10 px-3 py-1">
+      {/* Mobile Score Bar - Ultra Compact */}
+      <div className="fixed top-9 left-0 right-0 bg-black/70 backdrop-blur-sm border-b border-white/10 z-10 px-2 py-1">
         <div className="grid grid-cols-3 gap-1">
-          <div className="bg-black/40 px-2 py-1 rounded-lg text-center">
+          <div className="bg-black/40 px-1 py-0.5 rounded-lg text-center">
             <div className="text-[8px] text-white/40">SCORE</div>
-            <div className="font-mono font-bold text-sm text-blue-400 truncate">{score}</div>
+            <div className="font-mono font-bold text-xs text-blue-400 truncate">{score}</div>
           </div>
-          <div className="bg-black/40 px-2 py-1 rounded-lg text-center">
+          <div className="bg-black/40 px-1 py-0.5 rounded-lg text-center">
             <div className="text-[8px] text-white/40">LEVEL</div>
-            <div className="font-mono font-bold text-sm text-orange-400">{level}</div>
+            <div className="font-mono font-bold text-xs text-orange-400">{level}</div>
           </div>
-          <div className="bg-black/40 px-2 py-1 rounded-lg text-center">
+          <div className="bg-black/40 px-1 py-0.5 rounded-lg text-center">
             <div className="text-[8px] text-white/40">BEST</div>
-            <div className="font-mono font-bold text-sm text-emerald-400">{highScore}</div>
+            <div className="font-mono font-bold text-xs text-emerald-400">{highScore}</div>
           </div>
         </div>
       </div>
 
-      {/* Mobile Game Area - Compact */}
-      <div className="pt-16 px-2 pb-2">
-        {/* Game Board - Smaller */}
-        <div className="relative aspect-[1/2] w-64 mx-auto mb-2">
-          {/* Hold Preview - Moved closer */}
-          <div className="absolute -left-16 top-0 bg-black/80 backdrop-blur-md rounded-lg border border-white/20 p-1 w-14">
-            <div className="text-[8px] text-white/60 text-center font-bold">HOLD</div>
-            <div className="flex justify-center bg-black/40 rounded p-1">
-              {renderPiece(holdPiece, 'w-2.5 h-2.5')}
+      {/* Mobile Game Area - Compact with Visible Buttons */}
+      <div className="pt-14 px-2 pb-2">
+        {/* Game Board - Centered */}
+        <div className="flex justify-center mb-2">
+          <div className="relative w-64">
+            {/* Hold Preview - Left */}
+            <div className="absolute -left-16 top-0 bg-black/80 backdrop-blur-md rounded-lg border border-white/20 p-1 w-14">
+              <div className="text-[8px] text-white/60 text-center font-bold">HOLD</div>
+              <div className="flex justify-center bg-black/40 rounded p-1">
+                {renderPiece(holdPiece, 'w-2.5 h-2.5')}
+              </div>
             </div>
-          </div>
 
-          {/* Next Preview - Moved closer */}
-          <div className="absolute -right-16 top-0 bg-black/80 backdrop-blur-md rounded-lg border border-white/20 p-1 w-14">
-            <div className="text-[8px] text-white/60 text-center font-bold">NEXT</div>
-            <div className="flex justify-center bg-black/40 rounded p-1">
-              {renderPiece(nextPiece, 'w-2.5 h-2.5')}
+            {/* Next Preview - Right */}
+            <div className="absolute -right-16 top-0 bg-black/80 backdrop-blur-md rounded-lg border border-white/20 p-1 w-14">
+              <div className="text-[8px] text-white/60 text-center font-bold">NEXT</div>
+              <div className="flex justify-center bg-black/40 rounded p-1">
+                {renderPiece(nextPiece, 'w-2.5 h-2.5')}
+              </div>
             </div>
-          </div>
 
-          {/* Main Board */}
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-md rounded-2xl border-2 border-white/20 shadow-xl overflow-hidden touch-none"
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-            onTouchMove={(e) => e.preventDefault()}
-          >
-            <div className="grid h-full" style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)` }}>
-              {grid.map((row, y) =>
-                row.map((cell, x) => {
-                  let bgColor = cell || '#0f172a';
-                  let opacity = cell ? 1 : 0.3;
+            {/* Main Board */}
+            <div
+              className="aspect-[1/2] bg-black/60 backdrop-blur-md rounded-2xl border-2 border-white/20 shadow-xl overflow-hidden touch-none"
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+              onTouchMove={(e) => e.preventDefault()}
+            >
+              <div className="grid h-full" style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)` }}>
+                {grid.map((row, y) =>
+                  row.map((cell, x) => {
+                    let bgColor = cell || '#0f172a';
+                    let opacity = cell ? 1 : 0.3;
 
-                  if (currentPiece) {
-                    const pieceY = y - currentPiece.pos.y;
-                    const pieceX = x - currentPiece.pos.x;
-                    if (
-                      pieceY >= 0 && pieceY < currentPiece.shape.length &&
-                      pieceX >= 0 && pieceX < currentPiece.shape[0].length &&
-                      currentPiece.shape[pieceY][pieceX]
-                    ) {
-                      bgColor = currentPiece.color;
-                      opacity = 1;
+                    if (currentPiece) {
+                      const pieceY = y - currentPiece.pos.y;
+                      const pieceX = x - currentPiece.pos.x;
+                      if (
+                        pieceY >= 0 && pieceY < currentPiece.shape.length &&
+                        pieceX >= 0 && pieceX < currentPiece.shape[0].length &&
+                        currentPiece.shape[pieceY][pieceX]
+                      ) {
+                        bgColor = currentPiece.color;
+                        opacity = 1;
+                      }
                     }
-                  }
 
-                  if (ghostY !== null && currentPiece && !cell) {
-                    const ghostY_rel = y - ghostY;
-                    const ghostX = x - currentPiece.pos.x;
-                    if (
-                      ghostY_rel >= 0 && ghostY_rel < currentPiece.shape.length &&
-                      ghostX >= 0 && ghostX < currentPiece.shape[0].length &&
-                      currentPiece.shape[ghostY_rel][ghostX]
-                    ) {
-                      bgColor = currentPiece.color;
-                      opacity = 0.15;
+                    if (ghostY !== null && currentPiece && !cell) {
+                      const ghostY_rel = y - ghostY;
+                      const ghostX = x - currentPiece.pos.x;
+                      if (
+                        ghostY_rel >= 0 && ghostY_rel < currentPiece.shape.length &&
+                        ghostX >= 0 && ghostX < currentPiece.shape[0].length &&
+                        currentPiece.shape[ghostY_rel][ghostX]
+                      ) {
+                        bgColor = currentPiece.color;
+                        opacity = 0.15;
+                      }
                     }
-                  }
 
-                  return (
-                    <div
-                      key={`${y}-${x}`}
-                      className="border-[0.5px] border-white/10"
-                      style={{
-                        backgroundColor: bgColor,
-                        opacity,
-                      }}
-                    />
-                  );
-                })
-              )}
+                    return (
+                      <div
+                        key={`${y}-${x}`}
+                        className="border-[0.5px] border-white/10"
+                        style={{
+                          backgroundColor: bgColor,
+                          opacity,
+                        }}
+                      />
+                    );
+                  })
+                )}
+              </div>
+
+              <AnimatePresence>
+                {paused && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center"
+                  >
+                    <Pause className="w-12 h-12 text-white mb-2" />
+                    <h2 className="text-2xl font-black mb-2">PAUSED</h2>
+                    <button
+                      onClick={() => setPaused(false)}
+                      className="px-6 py-2 bg-white text-black rounded-full font-bold text-sm"
+                    >
+                      RESUME
+                    </button>
+                  </motion.div>
+                )}
+
+                {gameOver && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center"
+                  >
+                    <Trophy className="w-16 h-16 text-yellow-500 mb-2" />
+                    <h2 className="text-3xl font-black mb-1">GAME OVER</h2>
+                    <p className="text-white/60 mb-4 text-sm">Level {level} • {score} Points</p>
+                    <button
+                      onClick={resetGame}
+                      className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl font-bold text-base"
+                    >
+                      PLAY AGAIN
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-
-            <AnimatePresence>
-              {paused && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center"
-                >
-                  <Pause className="w-12 h-12 text-white mb-2" />
-                  <h2 className="text-2xl font-black mb-2">PAUSED</h2>
-                  <button
-                    onClick={() => setPaused(false)}
-                    className="px-6 py-2 bg-white text-black rounded-full font-bold text-sm"
-                  >
-                    RESUME
-                  </button>
-                </motion.div>
-              )}
-
-              {gameOver && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center"
-                >
-                  <Trophy className="w-16 h-16 text-yellow-500 mb-2" />
-                  <h2 className="text-3xl font-black mb-1">GAME OVER</h2>
-                  <p className="text-white/60 mb-4 text-sm">Level {level} • {score} Points</p>
-                  <button
-                    onClick={resetGame}
-                    className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl font-bold text-base"
-                  >
-                    PLAY AGAIN
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
         </div>
 
-        {/* Mobile Touch Controls - BIG AND VISIBLE, RIGHT BELOW BOARD */}
-        <div className="flex flex-col gap-2 mt-1">
-          {/* First row - Movement */}
+        {/* Mobile Touch Controls - BIG AND VISIBLE */}
+        <div className="space-y-2">
+          {/* Directional Controls - First Row */}
           <div className="grid grid-cols-4 gap-2">
             <button
               onClick={() => movePiece(-1, 0)}
@@ -1127,7 +1132,7 @@ export default function App() {
             </button>
           </div>
 
-          {/* Second row - Actions */}
+          {/* Action Controls - Second Row */}
           <div className="grid grid-cols-3 gap-2">
             <button
               onClick={holdCurrentPiece}
@@ -1153,22 +1158,22 @@ export default function App() {
           </div>
         </div>
 
-        {/* Lines Progress - Compact */}
-        <div className="mt-2">
-          <div className="bg-white/20 rounded-full h-2 overflow-hidden">
+        {/* Progress Bar */}
+        <div className="mt-3">
+          <div className="bg-white/20 rounded-full h-1.5 overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
               style={{ width: `${(lines % 10) * 10}%` }}
             />
           </div>
-          <div className="flex justify-between text-[10px] text-white/60 mt-1">
+          <div className="flex justify-between text-[8px] text-white/40 mt-1">
             <span>{lines} LINES</span>
             <span>{10 - (lines % 10)} TO NEXT</span>
           </div>
         </div>
 
-        {/* Swipe Hint - Small */}
-        <div className="mt-2 bg-blue-600/30 backdrop-blur-md rounded-xl p-2 text-xs text-blue-300 text-center border border-blue-500/30">
+        {/* Swipe Hint */}
+        <div className="mt-2 bg-blue-600/30 backdrop-blur-md rounded-xl py-2 px-3 text-xs text-blue-300 text-center border border-blue-500/30">
           <p className="font-bold">👆 SWIPE: ←→ Move • ↑ Rotate • ↓ Hard Drop</p>
         </div>
       </div>
