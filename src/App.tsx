@@ -669,8 +669,10 @@ export default function App() {
 
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (!isMobile) return;
+    // Don't prevent default if game is over (allows button clicks)
+    if (gameOver || paused) return;
     e.preventDefault();
-    if (!touchStartRef.current || !currentPiece || gameOver || paused) return;
+    if (!touchStartRef.current || !currentPiece) return;
 
     const touch = e.changedTouches[0];
     const dx = touch.clientX - touchStartRef.current.x;
@@ -1113,7 +1115,10 @@ export default function App() {
       </div>
 
       {/* Game Board Container - Limited Height */}
-      <div className="flex-1 flex flex-col items-center justify-center px-2 py-2 min-h-0" style={{ maxHeight: 'calc(100% - 280px)' }}>
+      {/* ADJUST THESE VALUES TO CHANGE LAYOUT: */}
+      {/* maxHeight: increase/decrease to give more space to game board */}
+      {/* px-2 py-2: padding around board */}
+      <div className="flex-1 flex flex-col items-center justify-center px-2 py-2 min-h-0" style={{ maxHeight: 'calc(100% - 260px)' }}>
         {/* Game Board - Perfect Square Blocks */}
         <div
           className="bg-black/60 rounded-2xl border-2 border-white/20 shadow-xl overflow-hidden"
@@ -1215,7 +1220,10 @@ export default function App() {
       </div>
 
       {/* Mobile Touch Controls - Always Visible with Fixed Height */}
-      <div className="px-2 pb-2 flex-shrink-0 space-y-1 h-auto" style={{ minHeight: '260px', maxHeight: 'calc(100vh - 400px)' }}>
+      {/* ADJUST minHeight TO CHANGE CONTROL PANEL SIZE: */}
+      {/* Smaller value = more space for game board, Larger value = bigger buttons */}
+      {/* Current: 260px - try 240px for more board space, or 280px for bigger buttons */}
+      <div className="px-2 pb-2 flex-shrink-0 space-y-1 h-auto" style={{ minHeight: '260px', maxHeight: 'calc(100vh - 350px)' }}>
         <div className="grid grid-cols-4 gap-1">
           <button
             onPointerDown={() => movePiece(-1, 0)}
