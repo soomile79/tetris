@@ -5,12 +5,10 @@ import {
   Play,
   RotateCcw,
   Trophy,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   RotateCw,
   Zap,
-  SkipForward,
   Volume2,
   VolumeX,
   Monitor,
@@ -61,7 +59,7 @@ const getRandomPiece = (): Piece => {
   };
 };
 
-// --- Audio Manager ---
+// --- Audio Manager (same as before) ---
 class AudioManager {
   private context: AudioContext | null = null;
   private musicNodes: {
@@ -108,7 +106,6 @@ class AudioManager {
     }
   }
 
-  // Sound Effects
   playMove() {
     if (!this.enabled || !this.context) return;
     this.playTone(150, 0.05, 'sine', 0.1);
@@ -193,7 +190,6 @@ class AudioManager {
     osc.stop(now + duration);
   }
 
-  // Dynamic Chiptune Music
   startMusic(level: number) {
     if (!this.enabled || !this.context || this.isMusicPlaying) return;
 
@@ -220,10 +216,6 @@ class AudioManager {
 
   updateMusicSpeed(level: number) {
     this.musicSpeed = Math.max(0.5, 1 - (level - 1) * 0.1);
-    if (this.isMusicPlaying) {
-      this.stopMusic();
-      this.startMusic(level);
-    }
   }
 
   private playMusicLoop() {
@@ -231,7 +223,6 @@ class AudioManager {
 
     const now = this.context.currentTime;
 
-    // Create oscillators for a simple chiptune melody
     const osc1 = this.context.createOscillator();
     const osc2 = this.context.createOscillator();
     const osc3 = this.context.createOscillator();
@@ -258,8 +249,7 @@ class AudioManager {
 
     this.musicNodes = { oscillator1: osc1, oscillator2: osc2, oscillator3: osc3, gain1, gain2, gain3, masterGain };
 
-    // Simple chiptune melody pattern (C major arpeggio)
-    const notes = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5
+    const notes = [261.63, 329.63, 392.00, 523.25];
     let noteIndex = 0;
 
     const playNote = () => {
@@ -283,12 +273,10 @@ class AudioManager {
       noteIndex++;
     };
 
-    // Start oscillators
     osc1.start(now);
     osc2.start(now);
     osc3.start(now);
 
-    // Schedule notes
     const baseInterval = 150 * this.musicSpeed;
     playNote();
     this.musicInterval = window.setInterval(playNote, baseInterval);
@@ -356,7 +344,7 @@ export default function App() {
     }
   }, [level, musicEnabled]);
 
-  // --- Game Logic ---
+  // --- Game Logic (same as before) ---
   const checkCollision = useCallback((piece: Piece, newPos = piece.pos, newShape = piece.shape) => {
     for (let y = 0; y < newShape.length; y++) {
       for (let x = 0; x < newShape[y].length; x++) {
@@ -728,11 +716,11 @@ export default function App() {
     );
   };
 
-  // Desktop Layout
+  // Desktop Layout (unchanged)
   if (deviceType === 'desktop') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white">
-        {/* Header */}
+        {/* Desktop header - same as before */}
         <div className="fixed top-0 left-0 right-0 bg-black/50 backdrop-blur-lg border-b border-white/10 z-10">
           <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -747,14 +735,12 @@ export default function App() {
               <button
                 onClick={() => setMusicEnabled(!musicEnabled)}
                 className="p-2 bg-white/10 rounded-xl hover:bg-white/20"
-                title={musicEnabled ? "Disable music" : "Enable music"}
               >
                 {musicEnabled ? <Music2 className="w-5 h-5" /> : <Music className="w-5 h-5" />}
               </button>
               <button
                 onClick={() => setSoundEnabled(!soundEnabled)}
                 className="p-2 bg-white/10 rounded-xl hover:bg-white/20"
-                title={soundEnabled ? "Disable sounds" : "Enable sounds"}
               >
                 {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
               </button>
@@ -766,18 +752,15 @@ export default function App() {
           </div>
         </div>
 
-        {/* Main Game Area - Desktop */}
+        {/* Desktop game area - same as before */}
         <div className="pt-20 pb-8 px-4 max-w-6xl mx-auto">
           <div className="grid grid-cols-12 gap-6 items-start">
-
-            {/* Left Panel - Hold */}
             <div className="col-span-2">
               <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-4">
                 <h3 className="text-xs font-bold text-white/40 mb-3">HOLD</h3>
                 <div className="bg-black/40 rounded-xl p-4 flex items-center justify-center min-h-[120px]">
                   {renderPiece(holdPiece, 'w-6 h-6')}
                 </div>
-
                 <div className="mt-4 space-y-2">
                   <div className="bg-black/40 rounded-xl p-3">
                     <div className="text-xs text-white/40">SCORE</div>
@@ -791,7 +774,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Center - Game Board */}
             <div className="col-span-8">
               <div className="relative aspect-[1/2] max-w-[400px] mx-auto">
                 <div className="absolute inset-0 bg-black/40 backdrop-blur-md rounded-3xl border-4 border-white/10 shadow-2xl overflow-hidden">
@@ -882,7 +864,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Desktop Controls Info */}
               <div className="mt-6 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-4">
                 <div className="grid grid-cols-3 gap-4 text-sm">
                   <div>
@@ -911,7 +892,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Right Panel - Next & Actions */}
             <div className="col-span-2">
               <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-4">
                 <h3 className="text-xs font-bold text-white/40 mb-3">NEXT</h3>
@@ -956,78 +936,74 @@ export default function App() {
     );
   }
 
-  // Mobile Layout - With visible buttons
+  // Mobile Layout - COMPACT VERSION THAT FITS ON SCREEN
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white">
-      {/* Mobile Header */}
-      <div className="fixed top-0 left-0 right-0 bg-black/80 backdrop-blur-lg border-b border-white/10 z-10 px-4 py-2">
+      {/* Mobile Header - Compact */}
+      <div className="fixed top-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-b border-white/10 z-10 px-3 py-1">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center font-black">T</div>
-            <span className="font-bold text-sm">TETRIS</span>
-            <div className="ml-2 flex items-center gap-1 text-xs bg-white/10 px-2 py-1 rounded-full">
-              <Smartphone className="w-3 h-3" />
-              <span>MOBILE</span>
-            </div>
+            <div className="w-7 h-7 bg-blue-500 rounded-lg flex items-center justify-center font-black text-sm">T</div>
+            <span className="font-bold text-xs">TETRIS</span>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setMusicEnabled(!musicEnabled)}
-              className="p-2 bg-white/20 rounded-xl active:bg-white/30"
+              className="p-1.5 bg-white/20 rounded-lg active:bg-white/30"
             >
-              {musicEnabled ? <Music2 className="w-5 h-5" /> : <Music className="w-5 h-5" />}
+              {musicEnabled ? <Music2 className="w-4 h-4" /> : <Music className="w-4 h-4" />}
             </button>
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
-              className="p-2 bg-white/20 rounded-xl active:bg-white/30"
+              className="p-1.5 bg-white/20 rounded-lg active:bg-white/30"
             >
-              {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Mobile Score Bar */}
-      <div className="fixed top-14 left-0 right-0 bg-black/60 backdrop-blur-sm border-b border-white/10 z-10 px-4 py-2">
-        <div className="flex justify-between items-center">
-          <div className="bg-black/40 px-3 py-1 rounded-xl">
-            <div className="text-[10px] text-white/40">SCORE</div>
-            <div className="font-mono font-bold text-base text-blue-400">{score}</div>
+      {/* Mobile Score Bar - Compact */}
+      <div className="fixed top-10 left-0 right-0 bg-black/70 backdrop-blur-sm border-b border-white/10 z-10 px-3 py-1">
+        <div className="grid grid-cols-3 gap-1">
+          <div className="bg-black/40 px-2 py-1 rounded-lg text-center">
+            <div className="text-[8px] text-white/40">SCORE</div>
+            <div className="font-mono font-bold text-sm text-blue-400 truncate">{score}</div>
           </div>
-          <div className="bg-black/40 px-3 py-1 rounded-xl">
-            <div className="text-[10px] text-white/40">LEVEL</div>
-            <div className="font-mono font-bold text-base text-orange-400">{level}</div>
+          <div className="bg-black/40 px-2 py-1 rounded-lg text-center">
+            <div className="text-[8px] text-white/40">LEVEL</div>
+            <div className="font-mono font-bold text-sm text-orange-400">{level}</div>
           </div>
-          <div className="bg-black/40 px-3 py-1 rounded-xl">
-            <div className="text-[10px] text-white/40">BEST</div>
-            <div className="font-mono font-bold text-base text-emerald-400">{highScore}</div>
+          <div className="bg-black/40 px-2 py-1 rounded-lg text-center">
+            <div className="text-[8px] text-white/40">BEST</div>
+            <div className="font-mono font-bold text-sm text-emerald-400">{highScore}</div>
           </div>
         </div>
       </div>
 
-      {/* Mobile Game Area */}
-      <div className="pt-28 px-3 pb-4">
-        {/* Game Board with Previews */}
-        <div className="relative aspect-[1/2] w-full mb-4">
-          {/* Hold Preview - Made more visible */}
-          <div className="absolute -left-16 top-0 bg-black/60 backdrop-blur-md rounded-xl border-2 border-white/20 p-2 w-14 z-20">
-            <div className="text-[10px] text-white/60 text-center mb-1 font-bold">HOLD</div>
-            <div className="flex justify-center bg-black/40 rounded-lg p-1">
-              {renderPiece(holdPiece, 'w-3 h-3')}
+      {/* Mobile Game Area - Compact */}
+      <div className="pt-16 px-2 pb-2">
+        {/* Game Board - Smaller */}
+        <div className="relative aspect-[1/2] w-64 mx-auto mb-2">
+          {/* Hold Preview - Moved closer */}
+          <div className="absolute -left-16 top-0 bg-black/80 backdrop-blur-md rounded-lg border border-white/20 p-1 w-14">
+            <div className="text-[8px] text-white/60 text-center font-bold">HOLD</div>
+            <div className="flex justify-center bg-black/40 rounded p-1">
+              {renderPiece(holdPiece, 'w-2.5 h-2.5')}
             </div>
           </div>
 
-          {/* Next Preview - Made more visible */}
-          <div className="absolute -right-16 top-0 bg-black/60 backdrop-blur-md rounded-xl border-2 border-white/20 p-2 w-14 z-20">
-            <div className="text-[10px] text-white/60 text-center mb-1 font-bold">NEXT</div>
-            <div className="flex justify-center bg-black/40 rounded-lg p-1">
-              {renderPiece(nextPiece, 'w-3 h-3')}
+          {/* Next Preview - Moved closer */}
+          <div className="absolute -right-16 top-0 bg-black/80 backdrop-blur-md rounded-lg border border-white/20 p-1 w-14">
+            <div className="text-[8px] text-white/60 text-center font-bold">NEXT</div>
+            <div className="flex justify-center bg-black/40 rounded p-1">
+              {renderPiece(nextPiece, 'w-2.5 h-2.5')}
             </div>
           </div>
 
           {/* Main Board */}
           <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-md rounded-3xl border-4 border-white/20 shadow-2xl overflow-hidden touch-none"
+            className="absolute inset-0 bg-black/60 backdrop-blur-md rounded-2xl border-2 border-white/20 shadow-xl overflow-hidden touch-none"
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
             onTouchMove={(e) => e.preventDefault()}
@@ -1071,7 +1047,6 @@ export default function App() {
                       style={{
                         backgroundColor: bgColor,
                         opacity,
-                        boxShadow: cell ? `inset 0 0 10px ${bgColor}80` : 'none'
                       }}
                     />
                   );
@@ -1087,11 +1062,11 @@ export default function App() {
                   exit={{ opacity: 0 }}
                   className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center"
                 >
-                  <Pause className="w-16 h-16 text-white mb-4" />
-                  <h2 className="text-3xl font-black mb-2">PAUSED</h2>
+                  <Pause className="w-12 h-12 text-white mb-2" />
+                  <h2 className="text-2xl font-black mb-2">PAUSED</h2>
                   <button
                     onClick={() => setPaused(false)}
-                    className="px-8 py-3 bg-white text-black rounded-full font-bold"
+                    className="px-6 py-2 bg-white text-black rounded-full font-bold text-sm"
                   >
                     RESUME
                   </button>
@@ -1102,14 +1077,14 @@ export default function App() {
                 <motion.div
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center"
+                  className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center"
                 >
-                  <Trophy className="w-20 h-20 text-yellow-500 mb-4" />
-                  <h2 className="text-4xl font-black mb-2">GAME OVER</h2>
-                  <p className="text-white/60 mb-6">Level {level} • {score} Points</p>
+                  <Trophy className="w-16 h-16 text-yellow-500 mb-2" />
+                  <h2 className="text-3xl font-black mb-1">GAME OVER</h2>
+                  <p className="text-white/60 mb-4 text-sm">Level {level} • {score} Points</p>
                   <button
                     onClick={resetGame}
-                    className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl font-bold text-lg"
+                    className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl font-bold text-base"
                   >
                     PLAY AGAIN
                   </button>
@@ -1119,85 +1094,82 @@ export default function App() {
           </div>
         </div>
 
-        {/* Mobile Touch Controls - Made bigger and more visible */}
-        <div className="grid grid-cols-4 gap-3 mt-4">
-          <button
-            onClick={() => movePiece(-1, 0)}
-            className="aspect-square bg-blue-600/80 backdrop-blur-md rounded-2xl active:bg-blue-500 transition-colors flex items-center justify-center shadow-lg border-2 border-white/20"
-            style={{ minHeight: '70px' }}
-          >
-            <ChevronLeft className="w-10 h-10" />
-          </button>
+        {/* Mobile Touch Controls - BIG AND VISIBLE, RIGHT BELOW BOARD */}
+        <div className="flex flex-col gap-2 mt-1">
+          {/* First row - Movement */}
+          <div className="grid grid-cols-4 gap-2">
+            <button
+              onClick={() => movePiece(-1, 0)}
+              className="bg-blue-600 rounded-xl active:bg-blue-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-4"
+            >
+              <ChevronLeft className="w-8 h-8" />
+            </button>
 
-          <button
-            onClick={() => movePiece(1, 0)}
-            className="aspect-square bg-blue-600/80 backdrop-blur-md rounded-2xl active:bg-blue-500 transition-colors flex items-center justify-center shadow-lg border-2 border-white/20"
-            style={{ minHeight: '70px' }}
-          >
-            <ChevronRight className="w-10 h-10" />
-          </button>
+            <button
+              onClick={() => movePiece(1, 0)}
+              className="bg-blue-600 rounded-xl active:bg-blue-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-4"
+            >
+              <ChevronRight className="w-8 h-8" />
+            </button>
 
-          <button
-            onClick={rotatePiece}
-            className="aspect-square bg-purple-600/80 backdrop-blur-md rounded-2xl active:bg-purple-500 transition-colors flex items-center justify-center shadow-lg border-2 border-white/20"
-            style={{ minHeight: '70px' }}
-          >
-            <RotateCw className="w-10 h-10" />
-          </button>
+            <button
+              onClick={rotatePiece}
+              className="bg-purple-600 rounded-xl active:bg-purple-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-4"
+            >
+              <RotateCw className="w-8 h-8" />
+            </button>
 
-          <button
-            onClick={hardDrop}
-            className="aspect-square bg-orange-600/80 backdrop-blur-md rounded-2xl active:bg-orange-500 transition-colors flex items-center justify-center shadow-lg border-2 border-white/20"
-            style={{ minHeight: '70px' }}
-          >
-            <Zap className="w-10 h-10" />
-          </button>
+            <button
+              onClick={hardDrop}
+              className="bg-orange-600 rounded-xl active:bg-orange-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-4"
+            >
+              <Zap className="w-8 h-8" />
+            </button>
+          </div>
+
+          {/* Second row - Actions */}
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={holdCurrentPiece}
+              disabled={!canHold || gameOver || paused}
+              className="bg-green-600 rounded-xl active:bg-green-500 transition-colors font-bold text-lg py-4 shadow-lg border border-white/20 disabled:opacity-50"
+            >
+              HOLD
+            </button>
+
+            <button
+              onClick={() => setPaused(!paused)}
+              className="bg-yellow-600 rounded-xl active:bg-yellow-500 transition-colors font-bold text-lg py-4 shadow-lg border border-white/20"
+            >
+              {paused ? 'RESUME' : 'PAUSE'}
+            </button>
+
+            <button
+              onClick={resetGame}
+              className="bg-red-600 rounded-xl active:bg-red-500 transition-colors font-bold text-lg py-4 shadow-lg border border-white/20"
+            >
+              NEW
+            </button>
+          </div>
         </div>
 
-        {/* Mobile Action Bar - Made bigger */}
-        <div className="grid grid-cols-2 gap-3 mt-3">
-          <button
-            onClick={holdCurrentPiece}
-            disabled={!canHold || gameOver || paused}
-            className="py-5 bg-green-600/80 backdrop-blur-md rounded-2xl active:bg-green-500 transition-colors font-bold text-lg disabled:opacity-50 shadow-lg border-2 border-white/20"
-          >
-            HOLD
-          </button>
-
-          <button
-            onClick={() => setPaused(!paused)}
-            className="py-5 bg-yellow-600/80 backdrop-blur-md rounded-2xl active:bg-yellow-500 transition-colors font-bold text-lg shadow-lg border-2 border-white/20"
-          >
-            {paused ? 'RESUME' : 'PAUSE'}
-          </button>
-        </div>
-
-        {/* Reset Button */}
-        <button
-          onClick={resetGame}
-          className="w-full mt-3 py-4 bg-red-600/80 backdrop-blur-md rounded-2xl active:bg-red-500 transition-colors font-bold text-lg shadow-lg border-2 border-white/20"
-        >
-          NEW GAME
-        </button>
-
-        {/* Mobile Progress */}
-        <div className="mt-4">
-          <div className="bg-white/20 rounded-full h-3 overflow-hidden border border-white/10">
+        {/* Lines Progress - Compact */}
+        <div className="mt-2">
+          <div className="bg-white/20 rounded-full h-2 overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
               style={{ width: `${(lines % 10) * 10}%` }}
             />
           </div>
-          <div className="flex justify-between text-xs text-white/60 mt-2 px-1">
-            <span className="font-bold">{lines} LINES</span>
-            <span className="font-bold">{10 - (lines % 10)} TO NEXT LEVEL</span>
+          <div className="flex justify-between text-[10px] text-white/60 mt-1">
+            <span>{lines} LINES</span>
+            <span>{10 - (lines % 10)} TO NEXT</span>
           </div>
         </div>
 
-        {/* Swipe Hint */}
-        <div className="mt-4 bg-blue-600/30 backdrop-blur-md rounded-2xl p-4 text-sm text-blue-300 text-center border-2 border-blue-500/30">
-          <p className="font-bold mb-2 text-base">👆 SWIPE CONTROLS</p>
-          <p className="text-white/80">←→ Move • ↑ Rotate • ↓ Hard Drop</p>
+        {/* Swipe Hint - Small */}
+        <div className="mt-2 bg-blue-600/30 backdrop-blur-md rounded-xl p-2 text-xs text-blue-300 text-center border border-blue-500/30">
+          <p className="font-bold">👆 SWIPE: ←→ Move • ↑ Rotate • ↓ Hard Drop</p>
         </div>
       </div>
     </div>
