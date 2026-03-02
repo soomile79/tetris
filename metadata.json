@@ -1,0 +1,5 @@
+{
+  "name": "Tetris Pro",
+  "description": "A high-performance, polished Tetris implementation with ghost pieces, hold functionality, and modern animations.",
+  "requestFramePermissions": []
+}
