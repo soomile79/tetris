@@ -1118,7 +1118,7 @@ export default function App() {
       {/* ADJUST THESE VALUES TO CHANGE LAYOUT: */}
       {/* maxHeight: increase/decrease to give more space to game board */}
       {/* px-2 py-2: padding around board */}
-      <div className="flex-1 flex flex-col items-center justify-center px-2 py-2 min-h-0" style={{ maxHeight: 'calc(100% - 260px)' }}>
+      <div className="flex-1 flex flex-col items-center justify-center px-2 py-2 min-h-0" style={{ maxHeight: 'calc(100% - 220px)' }}>
         {/* Game Board - Perfect Square Blocks */}
         <div
           className="bg-black/60 rounded-2xl border-2 border-white/20 shadow-xl overflow-hidden"
@@ -1127,7 +1127,7 @@ export default function App() {
             width: '100%',
             height: '100%',
             aspectRatio: '10 / 20',
-            maxWidth: 'min(100%, calc(100vh * 0.4))',
+            maxWidth: 'min(100%, calc(100vh * 0.35))',
           }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
@@ -1223,7 +1223,7 @@ export default function App() {
       {/* ADJUST minHeight TO CHANGE CONTROL PANEL SIZE: */}
       {/* Smaller value = more space for game board, Larger value = bigger buttons */}
       {/* Current: 260px - try 240px for more board space, or 280px for bigger buttons */}
-      <div className="px-2 pb-2 flex-shrink-0 space-y-1 h-auto" style={{ minHeight: '260px', maxHeight: 'calc(100vh - 350px)' }}>
+      <div className="px-2 pb-2 flex-shrink-0 space-y-1 h-auto" style={{ minHeight: '220px', maxHeight: 'calc(100vh - 350px)' }}>
         <div className="grid grid-cols-4 gap-1">
           <button
             onPointerDown={() => movePiece(-1, 0)}
