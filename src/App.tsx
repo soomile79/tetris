@@ -165,7 +165,7 @@ class AudioManager {
       osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(300 - i * 50, now + i * 0.1);
 
-      gain.gain.setValueAtTime(0.15, now + i * 0.1);
+      gain.gain.setValueAtValue(0.15, now + i * 0.1);
       gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.1 + 0.2);
 
       osc.connect(gain);
@@ -1107,16 +1107,15 @@ export default function App() {
         </div>
       </div>
 
-      {/* Game Board Container - Maintains 1:2 Ratio */}
-      <div className="flex-1 flex flex-col items-center justify-center px-2 py-2 min-h-0">
+      {/* Game Board Container - Limited Height */}
+      <div className="flex-1 flex flex-col items-center justify-center px-2 py-2 min-h-0" style={{ maxHeight: 'calc(100% - 280px)' }}>
         {/* Game Board - Perfect Square Blocks */}
         <div
           className="bg-black/60 rounded-2xl border-2 border-white/20 shadow-xl overflow-hidden"
           style={{
             touchAction: 'none',
             width: '100%',
-            height: 'auto',
-            maxHeight: '100%',
+            height: '100%',
             aspectRatio: '10 / 20',
           }}
           onTouchStart={handleTouchStart}
@@ -1209,56 +1208,56 @@ export default function App() {
         </div>
       </div>
 
-      {/* Mobile Touch Controls - Always Visible */}
-      <div className="px-2 pb-2 flex-shrink-0 space-y-1">
+      {/* Mobile Touch Controls - Always Visible with Fixed Height */}
+      <div className="px-2 pb-2 flex-shrink-0 space-y-1 h-auto" style={{ minHeight: '260px' }}>
         <div className="grid grid-cols-4 gap-1">
           <button
             onPointerDown={() => movePiece(-1, 0)}
-            className="bg-blue-600 rounded-lg active:bg-blue-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-2.5"
+            className="bg-blue-600 rounded-lg active:bg-blue-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-3"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-5 h-5" />
           </button>
 
           <button
             onPointerDown={() => movePiece(1, 0)}
-            className="bg-blue-600 rounded-lg active:bg-blue-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-2.5"
+            className="bg-blue-600 rounded-lg active:bg-blue-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-3"
           >
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-5 h-5" />
           </button>
 
           <button
             onPointerDown={rotatePiece}
-            className="bg-purple-600 rounded-lg active:bg-purple-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-2.5"
+            className="bg-purple-600 rounded-lg active:bg-purple-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-3"
           >
-            <RotateCw className="w-4 h-4" />
+            <RotateCw className="w-5 h-5" />
           </button>
 
           <button
             onPointerDown={hardDrop}
-            className="bg-orange-600 rounded-lg active:bg-orange-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-2.5"
+            className="bg-orange-600 rounded-lg active:bg-orange-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-3"
           >
-            <Zap className="w-4 h-4" />
+            <Zap className="w-5 h-5" />
           </button>
         </div>
 
         <div className="grid grid-cols-3 gap-1">
           <button
             onPointerDown={softDrop}
-            className="bg-green-600 rounded-lg active:bg-green-500 transition-colors font-bold text-xs py-2.5 shadow-lg border border-white/20 flex items-center justify-center"
+            className="bg-green-600 rounded-lg active:bg-green-500 transition-colors font-bold text-xs py-3 shadow-lg border border-white/20 flex items-center justify-center"
           >
-            <ChevronDown className="w-4 h-4" />
+            <ChevronDown className="w-5 h-5" />
           </button>
 
           <button
             onPointerDown={() => setPaused(!paused)}
-            className="bg-yellow-600 rounded-lg active:bg-yellow-500 transition-colors font-bold text-xs py-2.5 shadow-lg border border-white/20"
+            className="bg-yellow-600 rounded-lg active:bg-yellow-500 transition-colors font-bold text-xs py-3 shadow-lg border border-white/20"
           >
             {paused ? 'RESUME' : 'PAUSE'}
           </button>
 
           <button
             onPointerDown={resetGame}
-            className="bg-red-600 rounded-lg active:bg-red-500 transition-colors font-bold text-xs py-2.5 shadow-lg border border-white/20"
+            className="bg-red-600 rounded-lg active:bg-red-500 transition-colors font-bold text-xs py-3 shadow-lg border border-white/20"
           >
             NEW
           </button>
