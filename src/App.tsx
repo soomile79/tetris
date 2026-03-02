@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Pause, Play, RotateCcw, Trophy, ChevronLeft, ChevronRight,
-  RotateCw, Zap, SkipForward, Volume2, VolumeX, Smartphone,
-  Music, Music2, Monitor
+  RotateCw, Zap, Volume2, VolumeX, Smartphone, Music2, Music
 } from 'lucide-react';
 
 // --- Constants ---
@@ -14,7 +13,6 @@ const MIN_SPEED = 100;
 const SPEED_STEP = 40;
 
 type PieceType = 'I' | 'O' | 'T' | 'S' | 'Z' | 'J' | 'L';
-type DeviceType = 'desktop' | 'mobile';
 
 interface Piece {
   type: PieceType;
@@ -35,151 +33,256 @@ const PIECES: Record<PieceType, { shape: number[][]; color: string }> = {
 
 const PIECE_TYPES: PieceType[] = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
 
-// --- Audio Engine ---
-class AudioManager {
-  private context: AudioContext | null = null;
-  private musicInterval: any = null;
-  private isPlaying = false;
-
-  init() {
-    if (!this.context) {
-      this.context = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    if (this.context.state === 'suspended') this.context.resume();
-  }
-
-  playTone(freq: number, type: OscillatorType, dur: number, vol: number) {
-    if (!this.context) return;
-    const osc = this.context.createOscillator();
-    const gain = this.context.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, this.context.currentTime);
-    gain.gain.setValueAtTime(vol, this.context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, this.context.currentTime + dur);
-    osc.connect(gain);
-    gain.connect(this.context.destination);
-    osc.start();
-    osc.stop(this.context.currentTime + dur);
-  }
-
-  startMusic(level: number) {
-    if (this.isPlaying) return;
-    this.isPlaying = true;
-    const notes = [261.63, 293.66, 329.63, 349.23, 392.00]; // C Major
-    let step = 0;
-
-    const playStep = () => {
-      const tempo = Math.max(150, 400 - (level * 20));
-      this.playTone(notes[step % notes.length], 'triangle', 0.2, 0.05);
-      step++;
-      this.musicInterval = setTimeout(playStep, tempo);
-    };
-    playStep();
-  }
-
-  stopMusic() {
-    this.isPlaying = false;
-    clearTimeout(this.musicInterval);
-  }
-}
+// --- Audio Controller ---
+let audioCtx: AudioContext | null = null;
+const playNote = (freq: number, type: OscillatorType, dur: number, vol: number) => {
+  if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + dur);
+};
 
 export default function App() {
-  const [deviceType, setDeviceType] = useState<DeviceType>('desktop');
   const [grid, setGrid] = useState(() => Array(ROWS).fill(null).map(() => Array(COLS).fill('')));
   const [currentPiece, setCurrentPiece] = useState<Piece | null>(null);
-  const [nextPiece, setNextPiece] = useState<Piece>(() => ({ ...PIECES['I'], type: 'I', pos: { x: 3, y: 0 } }));
+  const [nextPiece, setNextPiece] = useState<Piece>(() => {
+    const type = PIECE_TYPES[Math.floor(Math.random() * PIECE_TYPES.length)];
+    return { ...PIECES[type], type, pos: { x: 3, y: 0 } };
+  });
   const [score, setScore] = useState(0);
   const [level, setLevel] = useState(1);
-  const [paused, setPaused] = useState(false);
   const [gameOver, setGameOver] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [muted, setMuted] = useState(false);
   const [musicEnabled, setMusicEnabled] = useState(true);
 
-  const audio = useRef(new AudioManager());
-  const gameLoop = useRef<number>();
+  const gameLoop = useRef<number>(0);
   const lastTime = useRef<number>(0);
+  const dropCounter = useRef<number>(0);
+  const musicTimer = useRef<number>(0);
 
-  // Initialize Audio & Detect Device
-  useEffect(() => {
-    const handleResize = () => setDeviceType(window.innerWidth < 768 ? 'mobile' : 'desktop');
-    window.addEventListener('resize', handleResize);
-    handleResize();
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  // --- Sound Effects ---
+  const triggerSFX = (type: 'move' | 'clear' | 'drop') => {
+    if (muted) return;
+    if (type === 'move') playNote(150, 'square', 0.05, 0.05);
+    if (type === 'drop') playNote(100, 'sawtooth', 0.1, 0.1);
+    if (type === 'clear') playNote(500, 'sine', 0.3, 0.1);
+  };
 
-  useEffect(() => {
-    if (musicEnabled && !paused && !gameOver) {
-      audio.current.init();
-      audio.current.startMusic(level);
-    } else {
-      audio.current.stopMusic();
+  const checkCollision = useCallback((piece: Piece, newPos = piece.pos, newShape = piece.shape) => {
+    for (let y = 0; y < newShape.length; y++) {
+      for (let x = 0; x < newShape[y].length; x++) {
+        if (newShape[y][x]) {
+          const bX = newPos.x + x;
+          const bY = newPos.y + y;
+          if (bX < 0 || bX >= COLS || bY >= ROWS || (bY >= 0 && grid[bY][bX])) return true;
+        }
+      }
     }
-  }, [musicEnabled, paused, gameOver, level]);
+    return false;
+  }, [grid]);
 
-  // (Game logic functions: movePiece, rotatePiece, checkCollision would go here, identical to your file)
+  const mergePiece = useCallback((p: Piece) => {
+    const newGrid = grid.map(row => [...row]);
+    p.shape.forEach((row, y) => {
+      row.forEach((cell, x) => {
+        if (cell && p.pos.y + y >= 0) newGrid[p.pos.y + y][p.pos.x + x] = p.color;
+      });
+    });
+    let cleared = 0;
+    const filteredGrid = newGrid.filter(row => {
+      const isFull = row.every(c => c !== '');
+      if (isFull) cleared++;
+      return !isFull;
+    });
+    while (filteredGrid.length < ROWS) filteredGrid.unshift(Array(COLS).fill(''));
+    if (cleared > 0) {
+      triggerSFX('clear');
+      setScore(s => s + (cleared * 100 * level));
+      setLinesCleared(l => l + cleared);
+    }
+    setGrid(filteredGrid);
+    setCurrentPiece(null);
+  }, [grid, level, muted]);
+
+  const [linesCleared, setLinesCleared] = useState(0);
+  useEffect(() => { setLevel(Math.floor(linesCleared / 10) + 1); }, [linesCleared]);
+
+  const spawnPiece = useCallback(() => {
+    // 1. Take the piece that was visible in the 'Next' window
+    const pieceToSpawn = { ...nextPiece, pos: { x: 3, y: 0 } };
+
+    if (checkCollision(pieceToSpawn)) {
+      setGameOver(true);
+      return;
+    }
+
+    // 2. Set it as the current active piece
+    setCurrentPiece(pieceToSpawn);
+
+    // 3. Generate a NEW piece for the 'Next' window
+    const newType = PIECE_TYPES[Math.floor(Math.random() * PIECE_TYPES.length)];
+    setNextPiece({ ...PIECES[newType], type: newType, pos: { x: 3, y: 0 } });
+  }, [nextPiece, checkCollision]);
+
+  const movePiece = useCallback((dx: number, dy: number) => {
+    if (!currentPiece || paused || gameOver) return;
+    const newPos = { x: currentPiece.pos.x + dx, y: currentPiece.pos.y + dy };
+    if (!checkCollision(currentPiece, newPos)) {
+      setCurrentPiece({ ...currentPiece, pos: newPos });
+      if (dx !== 0) triggerSFX('move');
+    } else if (dy > 0) {
+      mergePiece(currentPiece);
+    }
+  }, [currentPiece, paused, gameOver, checkCollision, mergePiece]);
+
+  const rotatePiece = useCallback(() => {
+    if (!currentPiece || paused || gameOver) return;
+    const rotated = currentPiece.shape[0].map((_, i) => currentPiece.shape.map(row => row[i]).reverse());
+    if (!checkCollision(currentPiece, currentPiece.pos, rotated)) {
+      setCurrentPiece({ ...currentPiece, shape: rotated });
+      triggerSFX('move');
+    }
+  }, [currentPiece, paused, gameOver, checkCollision]);
+
+  const hardDrop = useCallback(() => {
+    if (!currentPiece || paused || gameOver) return;
+    let y = currentPiece.pos.y;
+    while (!checkCollision(currentPiece, { ...currentPiece.pos, y: y + 1 })) y++;
+    triggerSFX('drop');
+    mergePiece({ ...currentPiece, pos: { ...currentPiece.pos, y } });
+  }, [currentPiece, paused, gameOver, checkCollision, mergePiece]);
+
+  // --- Game Loop ---
+  useEffect(() => {
+    const update = (time: number) => {
+      const delta = time - lastTime.current;
+      lastTime.current = time;
+      if (!paused && !gameOver) {
+        // Music loop
+        if (musicEnabled && !muted) {
+          musicTimer.current += delta;
+          if (musicTimer.current > 400 - (level * 20)) {
+            playNote(261.63 + (musicTimer.current % 100), 'triangle', 0.1, 0.02);
+            musicTimer.current = 0;
+          }
+        }
+        if (currentPiece) {
+          dropCounter.current += delta;
+          const speed = Math.max(MIN_SPEED, BASE_SPEED - (level * SPEED_STEP));
+          if (dropCounter.current > speed) {
+            movePiece(0, 1);
+            dropCounter.current = 0;
+          }
+        } else {
+          spawnPiece();
+        }
+      }
+      gameLoop.current = requestAnimationFrame(update);
+    };
+    gameLoop.current = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(gameLoop.current);
+  }, [paused, gameOver, currentPiece, level, movePiece, spawnPiece, musicEnabled, muted]);
+
+  // Ghost Piece Logic
+  const getGhostY = () => {
+    if (!currentPiece) return 0;
+    let y = currentPiece.pos.y;
+    while (!checkCollision(currentPiece, { ...currentPiece.pos, y: y + 1 })) y++;
+    return y;
+  };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white overflow-hidden selection:bg-blue-500/30">
-      {/* Dynamic Header */}
+    <div className="min-h-screen bg-slate-950 text-white font-sans selection:bg-blue-500/30 overflow-hidden touch-none">
+      {/* Header */}
       <div className="fixed top-0 inset-x-0 h-16 bg-slate-900/50 backdrop-blur-xl border-b border-white/5 flex items-center justify-between px-6 z-50">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <span className="font-black text-xl">T</span>
-          </div>
-          <div>
-            <h1 className="text-sm font-black tracking-tighter uppercase text-slate-400">Tetris Neo</h1>
-            <p className="text-[10px] font-mono text-blue-400">LVL {level} • SCORE {score}</p>
-          </div>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center font-black">T</div>
+          <span className="text-xs font-bold tracking-widest text-slate-400 uppercase">Tetris Pro</span>
         </div>
-
-        <div className="flex items-center gap-2">
-          <button onClick={() => setMusicEnabled(!musicEnabled)} className="p-2.5 bg-white/5 rounded-xl hover:bg-white/10 transition">
-            {musicEnabled ? <Music2 className="w-5 h-5 text-blue-400" /> : <Music className="w-5 h-5 text-slate-500" />}
+        <div className="flex gap-2">
+          <button onClick={() => setMusicEnabled(!musicEnabled)} className="p-2 bg-white/5 rounded-lg">
+            {musicEnabled ? <Music2 className="w-4 h-4 text-blue-400" /> : <Music className="w-4 h-4 text-slate-500" />}
           </button>
-          <button onClick={() => setPaused(!paused)} className="p-2.5 bg-white/5 rounded-xl hover:bg-white/10 transition">
-            {paused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
+          <button onClick={() => setMuted(!muted)} className="p-2 bg-white/5 rounded-lg">
+            {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </button>
         </div>
       </div>
 
-      <main className="h-screen pt-20 flex flex-col items-center justify-center px-4">
-        {/* Main Game Board - Preserving your design */}
-        <div className="relative aspect-[1/2] h-[70vh] max-h-[700px] bg-slate-900/80 rounded-[40px] border-8 border-slate-800 shadow-2xl overflow-hidden touch-none">
-          {/* Grid Rendering Logic here */}
+      <div className="flex flex-col lg:flex-row items-center justify-center gap-8 p-6 pt-24 h-screen max-w-6xl mx-auto">
+
+        {/* Next Window (Side) */}
+        <div className="hidden lg:block bg-slate-900/50 p-6 rounded-3xl border border-white/5 backdrop-blur">
+          <p className="text-[10px] font-black text-slate-500 uppercase mb-4 text-center">Next</p>
+          <div className="grid grid-cols-4 gap-1">
+            {nextPiece.shape.map((row, y) => row.map((cell, x) => (
+              <div key={x + y} className={`w-5 h-5 rounded-sm ${cell ? '' : 'opacity-0'}`} style={{ backgroundColor: nextPiece.color }} />
+            )))}
+          </div>
+        </div>
+
+        {/* Play Window (Center) */}
+        <div className="relative aspect-[1/2] h-full max-h-[650px] bg-slate-900 border-4 border-slate-800 rounded-[32px] overflow-hidden shadow-2xl">
           <div className="grid h-full" style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)` }}>
-            {/* Grid content mapping [cite: 288, 293] */}
+            {grid.map((row, y) => row.map((cell, x) => {
+              let color = cell || '#1e293b';
+              let opacity = cell ? 1 : 0.1;
+              if (currentPiece) {
+                const gy = y - getGhostY();
+                const py = y - currentPiece.pos.y;
+                const px = x - currentPiece.pos.x;
+                if (py >= 0 && py < currentPiece.shape.length && px >= 0 && px < currentPiece.shape[0].length && currentPiece.shape[py][px]) {
+                  color = currentPiece.color; opacity = 1;
+                } else if (gy >= 0 && gy < currentPiece.shape.length && px >= 0 && px < currentPiece.shape[0].length && currentPiece.shape[gy][px]) {
+                  color = currentPiece.color; opacity = 0.2;
+                }
+              }
+              return <div key={x + y} className="border-[0.5px] border-white/5" style={{ backgroundColor: color, opacity }} />;
+            }))}
           </div>
 
           <AnimatePresence>
             {gameOver && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center p-8 z-50 backdrop-blur-md">
-                <Trophy className="w-20 h-20 text-yellow-500 mb-6 drop-shadow-glow" />
-                <h2 className="text-5xl font-black italic tracking-tighter mb-2">GAME OVER</h2>
-                <button onClick={() => window.location.reload()} className="w-full py-4 bg-blue-600 rounded-2xl font-bold text-xl shadow-lg shadow-blue-500/20">RESTART</button>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-8 z-50">
+                <Trophy className="w-12 h-12 text-yellow-500 mb-4" />
+                <h2 className="text-3xl font-black mb-6 italic">GAME OVER</h2>
+                <button onClick={() => window.location.reload()} className="w-full py-4 bg-blue-600 rounded-2xl font-bold">RESTART</button>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
 
-        {/* FIXED MOBILE CONTROLS FOR IOS  */}
-        {deviceType === 'mobile' && (
-          <div className="fixed bottom-8 inset-x-0 px-6 grid grid-cols-3 gap-3 z-[60]">
-            <button className="h-20 bg-slate-800/80 backdrop-blur rounded-2xl flex items-center justify-center active:bg-blue-600 transition" onClick={() => {/* moveLeft */ }}>
-              <ChevronLeft className="w-8 h-8" />
-            </button>
-            <div className="flex flex-col gap-3">
-              <button className="h-20 bg-blue-600 rounded-2xl flex items-center justify-center active:scale-95 shadow-lg shadow-blue-500/20" onClick={() => {/* rotate */ }}>
-                <RotateCw className="w-8 h-8" />
-              </button>
-              <button className="h-14 bg-purple-600 rounded-2xl flex items-center justify-center" onClick={() => {/* hardDrop */ }}>
-                <Zap className="w-6 h-6 fill-current" />
-              </button>
-            </div>
-            <button className="h-20 bg-slate-800/80 backdrop-blur rounded-2xl flex items-center justify-center active:bg-blue-600 transition" onClick={() => {/* moveRight */ }}>
-              <ChevronRight className="w-8 h-8" />
-            </button>
+        {/* Stats (Desktop only) */}
+        <div className="hidden lg:flex flex-col gap-4">
+          <div className="bg-slate-900/50 p-6 rounded-3xl border border-white/5 w-32">
+            <p className="text-[10px] font-black text-slate-500 uppercase mb-1">Score</p>
+            <p className="text-xl font-mono font-bold text-blue-400">{score}</p>
           </div>
-        )}
-      </main>
+          <div className="bg-slate-900/50 p-6 rounded-3xl border border-white/5 w-32">
+            <p className="text-[10px] font-black text-slate-500 uppercase mb-1">Level</p>
+            <p className="text-xl font-mono font-bold text-purple-400">{level}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* FIXED MOBILE CONTROLS (iOS Compatible) */}
+      <div className="lg:hidden fixed bottom-10 inset-x-0 px-6 grid grid-cols-3 gap-4 z-[100]">
+        <button className="h-20 bg-slate-800/80 backdrop-blur rounded-2xl flex items-center justify-center active:bg-blue-600" onClick={() => movePiece(-1, 0)}><ChevronLeft /></button>
+        <div className="flex flex-col gap-4">
+          <button className="h-20 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30" onClick={() => rotatePiece()}><RotateCw /></button>
+          <button className="h-12 bg-purple-600 rounded-xl flex items-center justify-center" onClick={() => hardDrop()}><Zap className="w-4 h-4 fill-current" /></button>
+        </div>
+        <button className="h-20 bg-slate-800/80 backdrop-blur rounded-2xl flex items-center justify-center active:bg-blue-600" onClick={() => movePiece(1, 0)}><ChevronRight /></button>
+      </div>
     </div>
   );
 }
