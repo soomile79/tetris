@@ -11,8 +11,6 @@ import {
   Zap,
   Volume2,
   VolumeX,
-  Monitor,
-  Smartphone,
   Music,
   Music2,
   ChevronDown
@@ -168,7 +166,7 @@ class AudioManager {
       osc.frequency.setValueAtTime(300 - i * 50, now + i * 0.1);
 
       gain.gain.setValueAtTime(0.15, now + i * 0.1);
-      gain.gain.exponentialRampToValueAtValue(0.01, now + i * 0.1 + 0.2);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.1 + 0.2);
 
       osc.connect(gain);
       gain.connect(this.context!.destination);
@@ -826,17 +824,17 @@ export default function App() {
             </div>
           </div>
 
-          {/* Center - Game Board - PERFECT 1:2 RATIO */}
+          {/* Center - Game Board - PERFECT SQUARE BLOCKS */}
           <div className="flex-1 flex items-center justify-center min-w-0 h-full">
             <div
               className="bg-black/60 rounded-3xl border-4 border-white/20 shadow-2xl overflow-hidden"
               style={{
                 touchAction: 'none',
-                aspectRatio: '1 / 2',
                 width: '100%',
                 height: '100%',
                 maxWidth: '50vh',
                 maxHeight: '100vh',
+                aspectRatio: '10 / 20',
               }}
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
@@ -1109,16 +1107,17 @@ export default function App() {
         </div>
       </div>
 
-      {/* Game Board - Perfect 1:2 Ratio */}
+      {/* Game Board Container - Maintains 1:2 Ratio */}
       <div className="flex-1 flex flex-col items-center justify-center px-2 py-2 min-h-0">
+        {/* Game Board - Perfect Square Blocks */}
         <div
           className="bg-black/60 rounded-2xl border-2 border-white/20 shadow-xl overflow-hidden"
           style={{
             touchAction: 'none',
-            aspectRatio: '1 / 2',
             width: '100%',
             height: 'auto',
             maxHeight: '100%',
+            aspectRatio: '10 / 20',
           }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
@@ -1210,7 +1209,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Mobile Touch Controls */}
+      {/* Mobile Touch Controls - Always Visible */}
       <div className="px-2 pb-2 flex-shrink-0 space-y-1">
         <div className="grid grid-cols-4 gap-1">
           <button
