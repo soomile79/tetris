@@ -11,10 +11,10 @@ import {
   RotateCw,
   Zap,
   SkipForward,
-  Smartphone,
-  Maximize2,
   Volume2,
-  VolumeX
+  VolumeX,
+  Monitor,
+  Smartphone
 } from 'lucide-react';
 
 // --- Constants ---
@@ -25,6 +25,7 @@ const MIN_SPEED = 100;
 const SPEED_STEP = 40;
 
 type PieceType = 'I' | 'O' | 'T' | 'S' | 'Z' | 'J' | 'L';
+type DeviceType = 'desktop' | 'mobile';
 
 interface Piece {
   type: PieceType;
@@ -45,7 +46,6 @@ const PIECES: Record<PieceType, { shape: number[][]; color: string }> = {
 
 const PIECE_TYPES: PieceType[] = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
 
-// --- Helpers ---
 const createEmptyGrid = () => Array(ROWS).fill(null).map(() => Array(COLS).fill(''));
 
 const getRandomPiece = (): Piece => {
@@ -60,6 +60,7 @@ const getRandomPiece = (): Piece => {
 };
 
 export default function App() {
+  const [deviceType, setDeviceType] = useState<DeviceType>('desktop');
   const [grid, setGrid] = useState(createEmptyGrid());
   const [currentPiece, setCurrentPiece] = useState<Piece | null>(null);
   const [nextPiece, setNextPiece] = useState<Piece>(getRandomPiece());
@@ -71,24 +72,25 @@ export default function App() {
   const [gameOver, setGameOver] = useState(false);
   const [paused, setPaused] = useState(false);
   const [highScore, setHighScore] = useState(0);
-  const [showMobileControls, setShowMobileControls] = useState(window.innerWidth < 1024);
-  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   const gameLoop = useRef<number>();
   const lastTime = useRef<number>(0);
   const dropCounter = useRef<number>(0);
-  const boardRef = useRef<HTMLDivElement>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const keysPressed = useRef<Set<string>>(new Set());
 
-  // Handle resize
+  // Detect device type
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-      setShowMobileControls(window.innerWidth < 1024);
+    const checkDevice = () => {
+      const isMobile = window.matchMedia('(max-width: 768px)').matches ||
+        ('ontouchstart' in window);
+      setDeviceType(isMobile ? 'mobile' : 'desktop');
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+
+    checkDevice();
+    window.addEventListener('resize', checkDevice);
+    return () => window.removeEventListener('resize', checkDevice);
   }, []);
 
   // --- Game Logic ---
@@ -132,7 +134,6 @@ export default function App() {
       });
     });
 
-    // Clear lines
     let linesCleared = 0;
     const clearedGrid = newGrid.filter(row => {
       const full = row.every(cell => cell !== '');
@@ -144,16 +145,13 @@ export default function App() {
       clearedGrid.unshift(Array(COLS).fill(''));
     }
 
-    // Update score
     if (linesCleared > 0) {
       const points = [0, 100, 300, 500, 800];
       setScore(prev => prev + (points[linesCleared] * level));
       setLines(prev => {
         const total = prev + linesCleared;
         const newLevel = Math.floor(total / 10) + 1;
-        if (newLevel > level) {
-          setLevel(newLevel);
-        }
+        if (newLevel > level) setLevel(newLevel);
         return total;
       });
     }
@@ -190,7 +188,6 @@ export default function App() {
 
   const rotatePiece = useCallback(() => {
     if (!currentPiece || gameOver || paused) return;
-
     const rotated = rotateShape(currentPiece.shape);
     if (!checkCollision(currentPiece, currentPiece.pos, rotated)) {
       setCurrentPiece({ ...currentPiece, shape: rotated });
@@ -206,20 +203,59 @@ export default function App() {
       y++;
     }
 
-    // Create a copy of the piece at the final position
-    const droppedPiece = {
+    // Create final piece position
+    const finalPiece = {
       ...currentPiece,
       pos: { ...currentPiece.pos, y }
     };
 
     // Merge immediately
-    setCurrentPiece(droppedPiece);
+    mergePieceWithPiece(finalPiece);
+  }, [currentPiece, gameOver, paused, checkCollision]);
 
-    // Small delay to show the piece at bottom before merging
-    setTimeout(() => {
-      mergePiece();
-    }, 10);
-  }, [currentPiece, gameOver, paused, checkCollision, mergePiece]);
+  // Helper function to merge a specific piece
+  const mergePieceWithPiece = useCallback((piece: Piece) => {
+    if (!piece) return;
+
+    const newGrid = grid.map(row => [...row]);
+    piece.shape.forEach((row, y) => {
+      row.forEach((cell, x) => {
+        if (cell) {
+          const boardY = piece.pos.y + y;
+          const boardX = piece.pos.x + x;
+          if (boardY >= 0 && boardY < ROWS && boardX >= 0 && boardX < COLS) {
+            newGrid[boardY][boardX] = piece.color;
+          }
+        }
+      });
+    });
+
+    let linesCleared = 0;
+    const clearedGrid = newGrid.filter(row => {
+      const full = row.every(cell => cell !== '');
+      if (full) linesCleared++;
+      return !full;
+    });
+
+    while (clearedGrid.length < ROWS) {
+      clearedGrid.unshift(Array(COLS).fill(''));
+    }
+
+    if (linesCleared > 0) {
+      const points = [0, 100, 300, 500, 800];
+      setScore(prev => prev + (points[linesCleared] * level));
+      setLines(prev => {
+        const total = prev + linesCleared;
+        const newLevel = Math.floor(total / 10) + 1;
+        if (newLevel > level) setLevel(newLevel);
+        return total;
+      });
+    }
+
+    setGrid(clearedGrid);
+    setCurrentPiece(null);
+    setCanHold(true);
+  }, [grid, level]);
 
   const holdCurrentPiece = useCallback(() => {
     if (!currentPiece || !canHold || gameOver || paused) return;
@@ -301,8 +337,10 @@ export default function App() {
     }
   }, [score, highScore]);
 
-  // --- Keyboard Controls ---
+  // --- Desktop Keyboard Controls ---
   useEffect(() => {
+    if (deviceType !== 'desktop') return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // Prevent default behavior for game controls
       if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'c', 'C', 'p', 'P', 'r', 'R'].includes(e.key)) {
@@ -311,42 +349,71 @@ export default function App() {
 
       if (gameOver || paused) return;
 
+      // Prevent repeated key events
+      if (keysPressed.current.has(e.key)) return;
+      keysPressed.current.add(e.key);
+
       switch (e.key) {
-        case 'ArrowLeft': movePiece(-1, 0); break;
-        case 'ArrowRight': movePiece(1, 0); break;
-        case 'ArrowDown': movePiece(0, 1); break;
-        case 'ArrowUp': rotatePiece(); break;
-        case ' ': hardDrop(); break;
-        case 'c': case 'C': holdCurrentPiece(); break;
-        case 'p': case 'P': setPaused(p => !p); break;
-        case 'r': case 'R': resetGame(); break;
+        case 'ArrowLeft':
+          movePiece(-1, 0);
+          break;
+        case 'ArrowRight':
+          movePiece(1, 0);
+          break;
+        case 'ArrowDown':
+          movePiece(0, 1);
+          break;
+        case 'ArrowUp':
+          rotatePiece();
+          break;
+        case ' ':
+          hardDrop();
+          break;
+        case 'c':
+        case 'C':
+          holdCurrentPiece();
+          break;
+        case 'p':
+        case 'P':
+          setPaused(prev => !prev);
+          break;
+        case 'r':
+        case 'R':
+          resetGame();
+          break;
       }
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      keysPressed.current.delete(e.key);
+    };
+
     window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      keysPressed.current.clear();
     };
-  }, [movePiece, rotatePiece, hardDrop, holdCurrentPiece, resetGame, gameOver, paused]);
+  }, [deviceType, gameOver, paused, movePiece, rotatePiece, hardDrop, holdCurrentPiece, resetGame]);
 
-  // --- Touch Controls ---
+  // --- Mobile Touch Controls ---
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (deviceType !== 'mobile') return;
     e.preventDefault();
     const touch = e.touches[0];
-    setTouchStart({ x: touch.clientX, y: touch.clientY });
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    e.preventDefault();
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
+    if (deviceType !== 'mobile') return;
     e.preventDefault();
-    if (!touchStart || !currentPiece || gameOver || paused) return;
+    if (!touchStartRef.current || !currentPiece || gameOver || paused) return;
 
     const touch = e.changedTouches[0];
-    const dx = touch.clientX - touchStart.x;
-    const dy = touch.clientY - touchStart.y;
+    const dx = touch.clientX - touchStartRef.current.x;
+    const dy = touch.clientY - touchStartRef.current.y;
     const absDx = Math.abs(dx);
     const absDy = Math.abs(dy);
 
@@ -362,10 +429,10 @@ export default function App() {
       else rotatePiece();
     }
 
-    setTouchStart(null);
+    touchStartRef.current = null;
   };
 
-  // --- Ghost Piece Position ---
+  // --- Ghost Piece ---
   const getGhostY = () => {
     if (!currentPiece) return null;
     let y = currentPiece.pos.y;
@@ -380,7 +447,6 @@ export default function App() {
   // --- Render Piece Preview ---
   const renderPiece = (piece: Piece | null, size = 'w-5 h-5') => {
     if (!piece) return null;
-
     return (
       <div className="grid grid-cols-4 gap-0.5">
         {piece.shape.map((row, y) =>
@@ -396,317 +462,447 @@ export default function App() {
     );
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white">
-      {/* Header */}
-      <div className="fixed top-0 left-0 right-0 bg-black/50 backdrop-blur-lg border-b border-white/10 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center font-black text-lg">T</div>
-            <span className="font-bold text-sm tracking-wider hidden sm:inline">TETRIS PRO</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setSoundEnabled(!soundEnabled)}
-              className="p-2 bg-white/10 rounded-xl hover:bg-white/20"
-            >
-              {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-            </button>
-            <div className="text-right">
-              <div className="text-xs text-white/40">HIGH SCORE</div>
-              <div className="font-mono font-bold text-emerald-400">{highScore}</div>
+  // Desktop Layout
+  if (deviceType === 'desktop') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white">
+        {/* Header */}
+        <div className="fixed top-0 left-0 right-0 bg-black/50 backdrop-blur-lg border-b border-white/10 z-10">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center font-black text-lg">T</div>
+              <span className="font-bold text-sm tracking-wider">TETRIS PRO</span>
+              <div className="ml-4 flex items-center gap-1 text-xs bg-white/10 px-2 py-1 rounded-full">
+                <Monitor className="w-3 h-3" />
+                <span>DESKTOP MODE</span>
+              </div>
             </div>
-            {isMobile && (
+            <div className="flex items-center gap-4">
               <button
-                onClick={() => setShowMobileControls(v => !v)}
+                onClick={() => setSoundEnabled(!soundEnabled)}
                 className="p-2 bg-white/10 rounded-xl hover:bg-white/20"
               >
-                <Smartphone className="w-5 h-5" />
+                {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
               </button>
-            )}
+              <div className="text-right">
+                <div className="text-xs text-white/40">HIGH SCORE</div>
+                <div className="font-mono font-bold text-emerald-400">{highScore}</div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Main Game Area */}
-      <div className="pt-20 pb-8 px-2 sm:px-4 max-w-6xl mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-start">
+        {/* Main Game Area - Desktop */}
+        <div className="pt-20 pb-8 px-4 max-w-6xl mx-auto">
+          <div className="grid grid-cols-12 gap-6 items-start">
 
-          {/* Left Panel - Hold & Stats */}
-          <div className="lg:col-span-3 order-2 lg:order-1">
-            <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-3 sm:p-4 space-y-3 sm:space-y-4">
-              <div>
-                <h3 className="text-xs font-bold text-white/40 mb-2 sm:mb-3">HOLD</h3>
-                <div className="bg-black/40 rounded-xl p-3 sm:p-4 flex items-center justify-center min-h-[100px] sm:min-h-[120px]">
-                  {renderPiece(holdPiece, isMobile ? 'w-4 h-4' : 'w-6 h-6')}
+            {/* Left Panel - Hold */}
+            <div className="col-span-2">
+              <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-4">
+                <h3 className="text-xs font-bold text-white/40 mb-3">HOLD</h3>
+                <div className="bg-black/40 rounded-xl p-4 flex items-center justify-center min-h-[120px]">
+                  {renderPiece(holdPiece, 'w-6 h-6')}
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  <div className="bg-black/40 rounded-xl p-3">
+                    <div className="text-xs text-white/40">SCORE</div>
+                    <div className="font-mono font-bold text-lg text-blue-400">{score}</div>
+                  </div>
+                  <div className="bg-black/40 rounded-xl p-3">
+                    <div className="text-xs text-white/40">LINES</div>
+                    <div className="font-mono font-bold text-lg text-purple-400">{lines}</div>
+                  </div>
                 </div>
               </div>
+            </div>
 
-              <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                <div className="bg-black/40 rounded-xl p-2 sm:p-3">
-                  <div className="text-xs text-white/40">SCORE</div>
-                  <div className="font-mono font-bold text-base sm:text-lg text-blue-400 truncate">{score}</div>
-                </div>
-                <div className="bg-black/40 rounded-xl p-2 sm:p-3">
-                  <div className="text-xs text-white/40">LINES</div>
-                  <div className="font-mono font-bold text-base sm:text-lg text-purple-400">{lines}</div>
-                </div>
-              </div>
+            {/* Center - Game Board */}
+            <div className="col-span-8">
+              <div className="relative aspect-[1/2] max-w-[400px] mx-auto">
+                <div className="absolute inset-0 bg-black/40 backdrop-blur-md rounded-3xl border-4 border-white/10 shadow-2xl overflow-hidden">
+                  <div className="grid h-full" style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)` }}>
+                    {grid.map((row, y) =>
+                      row.map((cell, x) => {
+                        let bgColor = cell || '#0f172a';
+                        let opacity = cell ? 1 : 0.3;
 
-              <div className="bg-black/40 rounded-xl p-2 sm:p-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-white/40">LEVEL</span>
-                  <span className="font-mono font-bold text-lg sm:text-xl text-orange-400">{level}</span>
-                </div>
-                <div className="mt-2 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
-                    style={{ width: `${(lines % 10) * 10}%` }}
-                  />
+                        if (currentPiece) {
+                          const pieceY = y - currentPiece.pos.y;
+                          const pieceX = x - currentPiece.pos.x;
+                          if (
+                            pieceY >= 0 && pieceY < currentPiece.shape.length &&
+                            pieceX >= 0 && pieceX < currentPiece.shape[0].length &&
+                            currentPiece.shape[pieceY][pieceX]
+                          ) {
+                            bgColor = currentPiece.color;
+                            opacity = 1;
+                          }
+                        }
+
+                        if (ghostY !== null && currentPiece && !cell) {
+                          const ghostY_rel = y - ghostY;
+                          const ghostX = x - currentPiece.pos.x;
+                          if (
+                            ghostY_rel >= 0 && ghostY_rel < currentPiece.shape.length &&
+                            ghostX >= 0 && ghostX < currentPiece.shape[0].length &&
+                            currentPiece.shape[ghostY_rel][ghostX]
+                          ) {
+                            bgColor = currentPiece.color;
+                            opacity = 0.15;
+                          }
+                        }
+
+                        return (
+                          <div
+                            key={`${y}-${x}`}
+                            className="border-[0.5px] border-white/5"
+                            style={{
+                              backgroundColor: bgColor,
+                              opacity,
+                              boxShadow: cell ? `inset 0 0 10px ${bgColor}80` : 'none'
+                            }}
+                          />
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <AnimatePresence>
+                    {paused && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center"
+                      >
+                        <Pause className="w-16 h-16 text-white mb-4" />
+                        <h2 className="text-3xl font-black mb-2">PAUSED</h2>
+                        <button
+                          onClick={() => setPaused(false)}
+                          className="px-8 py-3 bg-white text-black rounded-full font-bold hover:scale-105 transition"
+                        >
+                          RESUME
+                        </button>
+                      </motion.div>
+                    )}
+
+                    {gameOver && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center"
+                      >
+                        <Trophy className="w-20 h-20 text-yellow-500 mb-4" />
+                        <h2 className="text-4xl font-black mb-2">GAME OVER</h2>
+                        <p className="text-white/60 mb-6">Level {level} • {score} Points</p>
+                        <button
+                          onClick={resetGame}
+                          className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl font-bold text-lg"
+                        >
+                          PLAY AGAIN
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
 
               {/* Desktop Controls Info */}
-              {!isMobile && (
-                <div className="hidden lg:block bg-black/40 rounded-xl p-3 text-xs">
-                  <div className="font-bold text-white/40 mb-2">CONTROLS</div>
-                  <div className="grid grid-cols-2 gap-2 text-white/60">
-                    <div>← → : Move</div>
-                    <div>↑ : Rotate</div>
-                    <div>↓ : Soft Drop</div>
-                    <div>Space : Hard Drop</div>
-                    <div>C : Hold</div>
-                    <div>P : Pause</div>
+              <div className="mt-6 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-4">
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <h4 className="font-bold text-white/40 mb-2">MOVEMENT</h4>
+                    <div className="space-y-1 text-white/60">
+                      <div>← → : Move left/right</div>
+                      <div>↓ : Soft drop</div>
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white/40 mb-2">ACTIONS</h4>
+                    <div className="space-y-1 text-white/60">
+                      <div>↑ : Rotate</div>
+                      <div>Space : Hard drop</div>
+                      <div>C : Hold piece</div>
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white/40 mb-2">GAME</h4>
+                    <div className="space-y-1 text-white/60">
+                      <div>P : Pause</div>
+                      <div>R : Reset</div>
+                    </div>
                   </div>
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Center - Game Board */}
-          <div className="lg:col-span-6 order-1 lg:order-2">
-            <div className="relative aspect-[1/2] max-w-[400px] mx-auto w-full">
-              {/* Main Board */}
-              <div
-                ref={boardRef}
-                className="absolute inset-0 bg-black/40 backdrop-blur-md rounded-3xl border-4 border-white/10 shadow-2xl overflow-hidden touch-none"
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-              >
-                <div
-                  className="grid h-full"
-                  style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)` }}
-                >
-                  {grid.map((row, y) =>
-                    row.map((cell, x) => {
-                      let bgColor = cell || '#0f172a';
-                      let opacity = cell ? 1 : 0.3;
-
-                      // Current piece
-                      if (currentPiece) {
-                        const pieceY = y - currentPiece.pos.y;
-                        const pieceX = x - currentPiece.pos.x;
-                        if (
-                          pieceY >= 0 &&
-                          pieceY < currentPiece.shape.length &&
-                          pieceX >= 0 &&
-                          pieceX < currentPiece.shape[0].length &&
-                          currentPiece.shape[pieceY][pieceX]
-                        ) {
-                          bgColor = currentPiece.color;
-                          opacity = 1;
-                        }
-                      }
-
-                      // Ghost piece
-                      if (ghostY !== null && currentPiece && !cell) {
-                        const ghostY_rel = y - ghostY;
-                        const ghostX = x - currentPiece.pos.x;
-                        if (
-                          ghostY_rel >= 0 &&
-                          ghostY_rel < currentPiece.shape.length &&
-                          ghostX >= 0 &&
-                          ghostX < currentPiece.shape[0].length &&
-                          currentPiece.shape[ghostY_rel][ghostX]
-                        ) {
-                          bgColor = currentPiece.color;
-                          opacity = 0.15;
-                        }
-                      }
-
-                      return (
-                        <div
-                          key={`${y}-${x}`}
-                          className="border-[0.5px] border-white/5"
-                          style={{
-                            backgroundColor: bgColor,
-                            opacity,
-                            boxShadow: cell ? `inset 0 0 10px ${bgColor}80` : 'none'
-                          }}
-                        />
-                      );
-                    })
-                  )}
-                </div>
-
-                {/* Overlays */}
-                <AnimatePresence>
-                  {paused && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-4"
-                    >
-                      <Pause className="w-12 h-12 sm:w-16 sm:h-16 text-white mb-4" />
-                      <h2 className="text-2xl sm:text-3xl font-black mb-2">PAUSED</h2>
-                      <button
-                        onClick={() => setPaused(false)}
-                        className="px-6 sm:px-8 py-2 sm:py-3 bg-white text-black rounded-full font-bold hover:scale-105 transition text-sm sm:text-base"
-                      >
-                        RESUME
-                      </button>
-                    </motion.div>
-                  )}
-
-                  {gameOver && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6 text-center"
-                    >
-                      <Trophy className="w-16 h-16 sm:w-20 sm:h-20 text-yellow-500 mb-4" />
-                      <h2 className="text-3xl sm:text-4xl font-black mb-2">GAME OVER</h2>
-                      <p className="text-white/60 mb-4 sm:mb-6 text-sm sm:text-base">
-                        Level {level} • {score} Points
-                      </p>
-                      <button
-                        onClick={resetGame}
-                        className="w-full py-3 sm:py-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl font-bold text-base sm:text-lg hover:opacity-90 transition"
-                      >
-                        PLAY AGAIN
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
               </div>
             </div>
 
-            {/* Mobile Controls */}
-            <AnimatePresence>
-              {showMobileControls && isMobile && (
-                <motion.div
-                  initial={{ opacity: 0, y: 50 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 50 }}
-                  className="mt-4 grid grid-cols-4 gap-2"
-                >
-                  <button
-                    onClick={() => movePiece(-1, 0)}
-                    className="p-3 sm:p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 active:bg-white/20 transition border border-white/10"
-                    aria-label="Move left"
-                  >
-                    <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 mx-auto" />
-                  </button>
-                  <button
-                    onClick={() => movePiece(1, 0)}
-                    className="p-3 sm:p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 active:bg-white/20 transition border border-white/10"
-                    aria-label="Move right"
-                  >
-                    <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 mx-auto" />
-                  </button>
-                  <button
-                    onClick={rotatePiece}
-                    className="p-3 sm:p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 active:bg-white/20 transition border border-white/10"
-                    aria-label="Rotate"
-                  >
-                    <RotateCw className="w-5 h-5 sm:w-6 sm:h-6 mx-auto" />
-                  </button>
-                  <button
-                    onClick={hardDrop}
-                    className="p-3 sm:p-4 bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl active:scale-95 transition"
-                    aria-label="Hard drop"
-                  >
-                    <Zap className="w-5 h-5 sm:w-6 sm:h-6 mx-auto" />
-                  </button>
-                  <button
-                    onClick={holdCurrentPiece}
-                    className="p-3 sm:p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 active:bg-white/20 transition border border-white/10 col-span-2"
-                    aria-label="Hold piece"
-                  >
-                    <span className="font-bold text-xs sm:text-sm">HOLD</span>
-                  </button>
-                  <button
-                    onClick={() => setPaused(p => !p)}
-                    className="p-3 sm:p-4 bg-white/10 backdrop-blur-md rounded-xl active:scale-95 active:bg-white/20 transition border border-white/10"
-                    aria-label="Pause"
-                  >
-                    {paused ? <Play className="w-5 h-5 sm:w-6 sm:h-6 mx-auto" /> : <Pause className="w-5 h-5 sm:w-6 sm:h-6 mx-auto" />}
-                  </button>
-                  <button
-                    onClick={resetGame}
-                    className="p-3 sm:p-4 bg-red-500/20 backdrop-blur-md rounded-xl active:scale-95 active:bg-red-500/30 transition border border-red-500/30"
-                    aria-label="Reset game"
-                  >
-                    <RotateCcw className="w-5 h-5 sm:w-6 sm:h-6 mx-auto" />
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Swipe Hint for Mobile */}
-            {isMobile && !showMobileControls && (
-              <div className="mt-4 bg-blue-500/10 rounded-xl p-3 text-xs text-blue-400">
-                <div className="flex items-center gap-2 mb-1">
-                  <Maximize2 className="w-4 h-4" />
-                  <span className="font-bold">SWIPE CONTROLS</span>
+            {/* Right Panel - Next & Actions */}
+            <div className="col-span-2">
+              <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-4">
+                <h3 className="text-xs font-bold text-white/40 mb-3">NEXT</h3>
+                <div className="bg-black/40 rounded-xl p-4 flex items-center justify-center min-h-[120px]">
+                  {renderPiece(nextPiece, 'w-6 h-6')}
                 </div>
-                <p className="text-white/60">
-                  Swipe left/right to move • Up to rotate • Down to hard drop
-                </p>
-              </div>
-            )}
-          </div>
 
-          {/* Right Panel - Next & Actions */}
-          <div className="lg:col-span-3 order-3">
-            <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-3 sm:p-4 space-y-3 sm:space-y-4">
-              <div>
-                <h3 className="text-xs font-bold text-white/40 mb-2 sm:mb-3">NEXT</h3>
-                <div className="bg-black/40 rounded-xl p-3 sm:p-4 flex items-center justify-center min-h-[100px] sm:min-h-[120px]">
-                  {renderPiece(nextPiece, isMobile ? 'w-4 h-4' : 'w-6 h-6')}
-                </div>
-              </div>
+                <div className="mt-4 space-y-2">
+                  <div className="bg-black/40 rounded-xl p-3">
+                    <div className="text-xs text-white/40">LEVEL</div>
+                    <div className="font-mono font-bold text-xl text-orange-400">{level}</div>
+                  </div>
 
-              {!isMobile && (
-                <div className="space-y-2">
                   <button
                     onClick={holdCurrentPiece}
                     disabled={!canHold || gameOver || paused}
-                    className="w-full py-3 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:hover:bg-white/10 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
+                    className="w-full py-3 bg-white/10 hover:bg-white/20 disabled:opacity-50 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
                   >
                     <SkipForward className="w-4 h-4" />
                     HOLD
                   </button>
+
                   <button
-                    onClick={() => setPaused(p => !p)}
-                    className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
+                    onClick={() => setPaused(!paused)}
+                    className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold text-sm transition"
                   >
-                    {paused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
                     {paused ? 'RESUME' : 'PAUSE'}
                   </button>
+
                   <button
                     onClick={resetGame}
-                    className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2"
+                    className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl font-bold text-sm transition"
                   >
-                    <RotateCcw className="w-4 h-4" />
                     RESET
                   </button>
                 </div>
-              )}
+              </div>
             </div>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Mobile Layout
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white">
+      {/* Mobile Header */}
+      <div className="fixed top-0 left-0 right-0 bg-black/80 backdrop-blur-lg border-b border-white/10 z-10 px-4 py-2">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center font-black">T</div>
+            <span className="font-bold text-sm">TETRIS</span>
+            <div className="ml-2 flex items-center gap-1 text-xs bg-white/10 px-2 py-1 rounded-full">
+              <Smartphone className="w-3 h-3" />
+              <span>MOBILE</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setSoundEnabled(!soundEnabled)} className="p-2">
+              {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile Score Bar */}
+      <div className="fixed top-14 left-0 right-0 bg-black/40 backdrop-blur-sm border-b border-white/5 z-10 px-4 py-2">
+        <div className="flex justify-between items-center">
+          <div>
+            <div className="text-xs text-white/40">SCORE</div>
+            <div className="font-mono font-bold text-lg text-blue-400">{score}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-xs text-white/40">LEVEL</div>
+            <div className="font-mono font-bold text-lg text-orange-400">{level}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-white/40">BEST</div>
+            <div className="font-mono font-bold text-lg text-emerald-400">{highScore}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile Game Area */}
+      <div className="pt-28 px-4 pb-4">
+        {/* Game Board with Previews */}
+        <div className="relative aspect-[1/2] w-full mb-4">
+          {/* Hold Preview */}
+          <div className="absolute -left-16 top-0 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 p-2 w-14">
+            <div className="text-[10px] text-white/40 text-center mb-1">HOLD</div>
+            <div className="flex justify-center">
+              {renderPiece(holdPiece, 'w-3 h-3')}
+            </div>
+          </div>
+
+          {/* Next Preview */}
+          <div className="absolute -right-16 top-0 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 p-2 w-14">
+            <div className="text-[10px] text-white/40 text-center mb-1">NEXT</div>
+            <div className="flex justify-center">
+              {renderPiece(nextPiece, 'w-3 h-3')}
+            </div>
+          </div>
+
+          {/* Main Board */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-md rounded-3xl border-4 border-white/10 shadow-2xl overflow-hidden touch-none"
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={(e) => e.preventDefault()}
+          >
+            <div className="grid h-full" style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)` }}>
+              {grid.map((row, y) =>
+                row.map((cell, x) => {
+                  let bgColor = cell || '#0f172a';
+                  let opacity = cell ? 1 : 0.3;
+
+                  if (currentPiece) {
+                    const pieceY = y - currentPiece.pos.y;
+                    const pieceX = x - currentPiece.pos.x;
+                    if (
+                      pieceY >= 0 && pieceY < currentPiece.shape.length &&
+                      pieceX >= 0 && pieceX < currentPiece.shape[0].length &&
+                      currentPiece.shape[pieceY][pieceX]
+                    ) {
+                      bgColor = currentPiece.color;
+                      opacity = 1;
+                    }
+                  }
+
+                  if (ghostY !== null && currentPiece && !cell) {
+                    const ghostY_rel = y - ghostY;
+                    const ghostX = x - currentPiece.pos.x;
+                    if (
+                      ghostY_rel >= 0 && ghostY_rel < currentPiece.shape.length &&
+                      ghostX >= 0 && ghostX < currentPiece.shape[0].length &&
+                      currentPiece.shape[ghostY_rel][ghostX]
+                    ) {
+                      bgColor = currentPiece.color;
+                      opacity = 0.15;
+                    }
+                  }
+
+                  return (
+                    <div
+                      key={`${y}-${x}`}
+                      className="border-[0.5px] border-white/5"
+                      style={{
+                        backgroundColor: bgColor,
+                        opacity,
+                        boxShadow: cell ? `inset 0 0 10px ${bgColor}80` : 'none'
+                      }}
+                    />
+                  );
+                })
+              )}
+            </div>
+
+            <AnimatePresence>
+              {paused && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center"
+                >
+                  <Pause className="w-16 h-16 text-white mb-4" />
+                  <h2 className="text-3xl font-black mb-2">PAUSED</h2>
+                  <button
+                    onClick={() => setPaused(false)}
+                    className="px-8 py-3 bg-white text-black rounded-full font-bold"
+                  >
+                    RESUME
+                  </button>
+                </motion.div>
+              )}
+
+              {gameOver && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center"
+                >
+                  <Trophy className="w-20 h-20 text-yellow-500 mb-4" />
+                  <h2 className="text-4xl font-black mb-2">GAME OVER</h2>
+                  <p className="text-white/60 mb-6">Level {level} • {score} Points</p>
+                  <button
+                    onClick={resetGame}
+                    className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl font-bold text-lg"
+                  >
+                    PLAY AGAIN
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* Mobile Touch Controls */}
+        <div className="grid grid-cols-4 gap-2 mt-4">
+          <button
+            onClick={() => movePiece(-1, 0)}
+            className="aspect-square bg-white/10 backdrop-blur-md rounded-2xl active:bg-white/20 transition-colors flex items-center justify-center"
+          >
+            <ChevronLeft className="w-8 h-8" />
+          </button>
+
+          <button
+            onClick={() => movePiece(1, 0)}
+            className="aspect-square bg-white/10 backdrop-blur-md rounded-2xl active:bg-white/20 transition-colors flex items-center justify-center"
+          >
+            <ChevronRight className="w-8 h-8" />
+          </button>
+
+          <button
+            onClick={rotatePiece}
+            className="aspect-square bg-white/10 backdrop-blur-md rounded-2xl active:bg-white/20 transition-colors flex items-center justify-center"
+          >
+            <RotateCw className="w-8 h-8" />
+          </button>
+
+          <button
+            onClick={hardDrop}
+            className="aspect-square bg-gradient-to-br from-blue-500 to-purple-500 rounded-2xl active:opacity-80 transition-opacity flex items-center justify-center"
+          >
+            <Zap className="w-8 h-8" />
+          </button>
+        </div>
+
+        {/* Mobile Action Bar */}
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <button
+            onClick={holdCurrentPiece}
+            disabled={!canHold || gameOver || paused}
+            className="py-4 bg-white/10 backdrop-blur-md rounded-2xl active:bg-white/20 transition-colors font-bold disabled:opacity-50"
+          >
+            HOLD
+          </button>
+
+          <button
+            onClick={() => setPaused(!paused)}
+            className="py-4 bg-white/10 backdrop-blur-md rounded-2xl active:bg-white/20 transition-colors font-bold"
+          >
+            {paused ? 'RESUME' : 'PAUSE'}
+          </button>
+        </div>
+
+        {/* Mobile Progress */}
+        <div className="mt-4">
+          <div className="bg-white/5 rounded-full h-2 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
+              style={{ width: `${(lines % 10) * 10}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs text-white/40 mt-2">
+            <span>{lines} LINES</span>
+            <span>{10 - (lines % 10)} TO NEXT LEVEL</span>
+          </div>
+        </div>
+
+        {/* Swipe Hint */}
+        <div className="mt-4 bg-blue-500/10 rounded-xl p-3 text-xs text-blue-400 text-center">
+          <p className="font-bold mb-1">👆 SWIPE CONTROLS</p>
+          <p className="text-white/60">Swipe left/right to move • Up to rotate • Down for hard drop</p>
         </div>
       </div>
     </div>
