@@ -25,7 +25,6 @@ const MIN_SPEED = 100;
 const SPEED_STEP = 40;
 
 type PieceType = 'I' | 'O' | 'T' | 'S' | 'Z' | 'J' | 'L';
-type DeviceType = 'desktop' | 'mobile';
 
 interface Piece {
   type: PieceType;
@@ -59,7 +58,7 @@ const getRandomPiece = (): Piece => {
   };
 };
 
-// --- Audio Manager ---
+// --- Audio Manager (same as before) ---
 class AudioManager {
   private context: AudioContext | null = null;
   private musicNodes: {
@@ -284,10 +283,35 @@ class AudioManager {
 }
 
 export default function App() {
-  const [deviceType, setDeviceType] = useState<DeviceType>('desktop');
+  const [deviceType, setDeviceType] = useState<'desktop' | 'mobile'>('desktop');
+
+  // Fix iOS Safari viewport and scrolling issues
+  useEffect(() => {
+    // Ensure proper viewport meta for iPhone notch/safe area support
+    let meta = document.querySelector('meta[name="viewport"]') as HTMLMetaElement;
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.name = 'viewport';
+      document.head.appendChild(meta);
+    }
+    meta.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
+
+    // Prevent iOS bounce/overscroll
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    document.body.style.height = '100%';
+
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.height = '';
+    };
+  }, []);
   const [grid, setGrid] = useState(createEmptyGrid());
   const [currentPiece, setCurrentPiece] = useState<Piece | null>(null);
-  const [nextPiece, setNextPiece] = useState<Piece>(getRandomPiece());
+  const [pieceQueue, setPieceQueue] = useState<Piece[]>([]);
   const [holdPiece, setHoldPiece] = useState<Piece | null>(null);
   const [canHold, setCanHold] = useState(true);
   const [score, setScore] = useState(0);
@@ -305,6 +329,22 @@ export default function App() {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const keysPressed = useRef<Set<string>>(new Set());
   const audioManager = useRef<AudioManager>(new AudioManager());
+
+  // Initialize queue with 3 pieces
+  useEffect(() => {
+    const queue = [];
+    for (let i = 0; i < 3; i++) {
+      queue.push(getRandomPiece());
+    }
+    setPieceQueue(queue);
+  }, []);
+
+  // Set initial current piece from queue
+  useEffect(() => {
+    if (pieceQueue.length > 0 && !currentPiece && !gameOver) {
+      setCurrentPiece(pieceQueue[0]);
+    }
+  }, [pieceQueue, currentPiece, gameOver]);
 
   // Detect device type
   useEffect(() => {
@@ -413,16 +453,27 @@ export default function App() {
     setCanHold(true);
   }, [currentPiece, grid, level, soundEnabled]);
 
-  const spawnPiece = useCallback(() => {
-    const piece = { ...nextPiece };
-    if (checkCollision(piece)) {
+  const spawnNextPiece = useCallback(() => {
+    if (pieceQueue.length < 2) return;
+
+    // Take the next piece from queue (index 1)
+    const nextPiece = pieceQueue[1];
+
+    if (checkCollision(nextPiece)) {
       setGameOver(true);
       if (soundEnabled) audioManager.current.playGameOver();
       return;
     }
-    setCurrentPiece(piece);
-    setNextPiece(getRandomPiece());
-  }, [nextPiece, checkCollision, soundEnabled]);
+
+    // Update queue: remove first piece and add a new random piece at the end
+    setPieceQueue(prevQueue => {
+      const newQueue = [...prevQueue.slice(1)];
+      newQueue.push(getRandomPiece());
+      return newQueue;
+    });
+
+    setCurrentPiece(nextPiece);
+  }, [pieceQueue, checkCollision, soundEnabled]);
 
   const movePiece = useCallback((dx: number, dy: number) => {
     if (!currentPiece || gameOver || paused) return false;
@@ -520,7 +571,10 @@ export default function App() {
     if (!holdPiece) {
       setHoldPiece(currentPiece);
       setCurrentPiece(null);
-      spawnPiece();
+      // After holding, spawn the next piece
+      setTimeout(() => {
+        spawnNextPiece();
+      }, 10);
     } else {
       const temp = currentPiece;
       setCurrentPiece({
@@ -531,7 +585,7 @@ export default function App() {
     }
     setCanHold(false);
     if (soundEnabled) audioManager.current.playRotate();
-  }, [currentPiece, holdPiece, canHold, gameOver, paused, spawnPiece, soundEnabled]);
+  }, [currentPiece, holdPiece, canHold, gameOver, paused, spawnNextPiece, soundEnabled]);
 
   const resetGame = useCallback(() => {
     setGrid(createEmptyGrid());
@@ -542,11 +596,22 @@ export default function App() {
     setPaused(false);
     setHoldPiece(null);
     setCanHold(true);
-    const first = getRandomPiece();
-    const second = getRandomPiece();
-    setCurrentPiece(first);
-    setNextPiece(second);
+
+    // Reset queue with new pieces
+    const queue = [];
+    for (let i = 0; i < 3; i++) {
+      queue.push(getRandomPiece());
+    }
+    setPieceQueue(queue);
+    setCurrentPiece(queue[0]);
   }, []);
+
+  // Auto-spawn next piece when current piece is null
+  useEffect(() => {
+    if (!currentPiece && !gameOver && pieceQueue.length > 0) {
+      spawnNextPiece();
+    }
+  }, [currentPiece, gameOver, pieceQueue, spawnNextPiece]);
 
   // --- Game Loop ---
   const gameUpdate = useCallback((time: number) => {
@@ -575,12 +640,6 @@ export default function App() {
       if (gameLoop.current) cancelAnimationFrame(gameLoop.current);
     };
   }, [gameUpdate]);
-
-  useEffect(() => {
-    if (!currentPiece && !gameOver) {
-      spawnPiece();
-    }
-  }, [currentPiece, gameOver, spawnPiece]);
 
   // --- High Score ---
   useEffect(() => {
@@ -701,8 +760,11 @@ export default function App() {
   // --- Render Piece Preview ---
   const renderPiece = (piece: Piece | null, size = 'w-5 h-5') => {
     if (!piece) return null;
+
+    const cols = piece.shape[0].length;
+
     return (
-      <div className="grid grid-cols-4 gap-0.5">
+      <div className="grid gap-0.5" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
         {piece.shape.map((row, y) =>
           row.map((cell, x) => (
             <div
@@ -900,7 +962,7 @@ export default function App() {
               <div className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-4">
                 <h3 className="text-xs font-bold text-white/40 mb-3">NEXT</h3>
                 <div className="bg-black/40 rounded-xl p-4 flex items-center justify-center min-h-[120px]">
-                  {renderPiece(nextPiece, 'w-6 h-6')}
+                  {pieceQueue.length > 1 && renderPiece(pieceQueue[1], 'w-6 h-6')}
                 </div>
 
                 <div className="mt-4 space-y-2">
@@ -939,11 +1001,11 @@ export default function App() {
     );
   }
 
-  // Mobile Layout - COMPACT VERSION WITH VISIBLE BUTTONS
+  // Mobile Layout
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white">
-      {/* Mobile Header - Ultra Compact */}
-      <div className="fixed top-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-b border-white/10 z-10 px-2 py-1">
+    <div className="bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white" style={{ minHeight: '100dvh', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      {/* Mobile Header */}
+      <div className="fixed top-0 left-0 right-0 bg-black/90 border-b border-white/10 z-10 px-2 py-1" style={{ paddingTop: 'max(env(safe-area-inset-top), 4px)' }}>
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-1">
             <div className="w-6 h-6 bg-blue-500 rounded-lg flex items-center justify-center font-black text-xs">T</div>
@@ -966,8 +1028,8 @@ export default function App() {
         </div>
       </div>
 
-      {/* Mobile Score Bar - Ultra Compact */}
-      <div className="fixed top-9 left-0 right-0 bg-black/70 backdrop-blur-sm border-b border-white/10 z-10 px-2 py-1">
+      {/* Mobile Score Bar */}
+      <div className="fixed left-0 right-0 bg-black/70 border-b border-white/10 z-10 px-2 py-1" style={{ top: 'calc(env(safe-area-inset-top) + 32px)' }}>
         <div className="grid grid-cols-3 gap-1">
           <div className="bg-black/40 px-1 py-0.5 rounded-lg text-center">
             <div className="text-[8px] text-white/40">SCORE</div>
@@ -984,12 +1046,12 @@ export default function App() {
         </div>
       </div>
 
-      {/* Mobile Game Area - Compact with Visible Buttons */}
-      <div className="pt-14 px-2 pb-2">
-        {/* Game Board - Centered */}
+      {/* Mobile Game Area */}
+      <div className="px-2 pb-2" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 72px)' }}>
+        {/* Game Board */}
         <div className="flex justify-center mb-2">
           <div className="relative w-64">
-            {/* Hold Preview - Left */}
+            {/* Hold Preview */}
             <div className="absolute -left-16 top-0 bg-black/80 backdrop-blur-md rounded-lg border border-white/20 p-1 w-14">
               <div className="text-[8px] text-white/60 text-center font-bold">HOLD</div>
               <div className="flex justify-center bg-black/40 rounded p-1">
@@ -997,17 +1059,18 @@ export default function App() {
               </div>
             </div>
 
-            {/* Next Preview - Right */}
+            {/* Next Preview - Now using pieceQueue[1] directly */}
             <div className="absolute -right-16 top-0 bg-black/80 backdrop-blur-md rounded-lg border border-white/20 p-1 w-14">
               <div className="text-[8px] text-white/60 text-center font-bold">NEXT</div>
               <div className="flex justify-center bg-black/40 rounded p-1">
-                {renderPiece(nextPiece, 'w-2.5 h-2.5')}
+                {pieceQueue.length > 1 && renderPiece(pieceQueue[1], 'w-2.5 h-2.5')}
               </div>
             </div>
 
             {/* Main Board */}
             <div
-              className="aspect-[1/2] bg-black/60 backdrop-blur-md rounded-2xl border-2 border-white/20 shadow-xl overflow-hidden touch-none"
+              className="aspect-[1/2] bg-black/60 rounded-2xl border-2 border-white/20 shadow-xl overflow-hidden"
+              style={{ touchAction: 'none' }}
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
               onTouchMove={(e) => e.preventDefault()}
@@ -1099,59 +1162,57 @@ export default function App() {
           </div>
         </div>
 
-        {/* Mobile Touch Controls - BIG AND VISIBLE */}
+        {/* Mobile Touch Controls */}
         <div className="space-y-2">
-          {/* Directional Controls - First Row */}
           <div className="grid grid-cols-4 gap-2">
             <button
-              onClick={() => movePiece(-1, 0)}
-              className="bg-blue-600 rounded-xl active:bg-blue-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-4"
+              onPointerDown={() => movePiece(-1, 0)}
+              className="bg-blue-600 rounded-xl active:bg-blue-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-5"
             >
               <ChevronLeft className="w-8 h-8" />
             </button>
 
             <button
-              onClick={() => movePiece(1, 0)}
-              className="bg-blue-600 rounded-xl active:bg-blue-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-4"
+              onPointerDown={() => movePiece(1, 0)}
+              className="bg-blue-600 rounded-xl active:bg-blue-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-5"
             >
               <ChevronRight className="w-8 h-8" />
             </button>
 
             <button
-              onClick={rotatePiece}
-              className="bg-purple-600 rounded-xl active:bg-purple-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-4"
+              onPointerDown={rotatePiece}
+              className="bg-purple-600 rounded-xl active:bg-purple-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-5"
             >
               <RotateCw className="w-8 h-8" />
             </button>
 
             <button
-              onClick={hardDrop}
-              className="bg-orange-600 rounded-xl active:bg-orange-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-4"
+              onPointerDown={hardDrop}
+              className="bg-orange-600 rounded-xl active:bg-orange-500 transition-colors flex items-center justify-center shadow-lg border border-white/20 py-5"
             >
               <Zap className="w-8 h-8" />
             </button>
           </div>
 
-          {/* Action Controls - Second Row */}
           <div className="grid grid-cols-3 gap-2">
             <button
-              onClick={holdCurrentPiece}
+              onPointerDown={holdCurrentPiece}
               disabled={!canHold || gameOver || paused}
-              className="bg-green-600 rounded-xl active:bg-green-500 transition-colors font-bold text-lg py-4 shadow-lg border border-white/20 disabled:opacity-50"
+              className="bg-green-600 rounded-xl active:bg-green-500 transition-colors font-bold text-lg py-5 shadow-lg border border-white/20 disabled:opacity-50"
             >
               HOLD
             </button>
 
             <button
-              onClick={() => setPaused(!paused)}
-              className="bg-yellow-600 rounded-xl active:bg-yellow-500 transition-colors font-bold text-lg py-4 shadow-lg border border-white/20"
+              onPointerDown={() => setPaused(!paused)}
+              className="bg-yellow-600 rounded-xl active:bg-yellow-500 transition-colors font-bold text-lg py-5 shadow-lg border border-white/20"
             >
               {paused ? 'RESUME' : 'PAUSE'}
             </button>
 
             <button
-              onClick={resetGame}
-              className="bg-red-600 rounded-xl active:bg-red-500 transition-colors font-bold text-lg py-4 shadow-lg border border-white/20"
+              onPointerDown={resetGame}
+              className="bg-red-600 rounded-xl active:bg-red-500 transition-colors font-bold text-lg py-5 shadow-lg border border-white/20"
             >
               NEW
             </button>
