@@ -290,12 +290,17 @@ class AudioManager {
 }
 
 export default function App() {
-  // Detect if mobile based on screen width
-  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 1024);
+  // Detect if mobile based on screen width (also consider aspect ratio for tablets)
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' &&
+    (window.innerWidth < 1024 || window.innerHeight / window.innerWidth > 1.2)
+  );
 
   useEffect(() => {
     const handleResize = () => {
-      setIsMobile(window.innerWidth < 1024);
+      setIsMobile(
+        window.innerWidth < 1024 || window.innerHeight / window.innerWidth > 1.2
+      );
     };
 
     window.addEventListener('resize', handleResize);
@@ -1117,6 +1122,7 @@ export default function App() {
             width: '100%',
             height: '100%',
             aspectRatio: '10 / 20',
+            maxWidth: 'min(100%, calc(100vh * 0.5))',
           }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
@@ -1209,7 +1215,7 @@ export default function App() {
       </div>
 
       {/* Mobile Touch Controls - Always Visible with Fixed Height */}
-      <div className="px-2 pb-2 flex-shrink-0 space-y-1 h-auto" style={{ minHeight: '260px' }}>
+      <div className="px-2 pb-2 flex-shrink-0 space-y-1 h-auto" style={{ minHeight: '260px', maxHeight: 'calc(100vh - 400px)' }}>
         <div className="grid grid-cols-4 gap-1">
           <button
             onPointerDown={() => movePiece(-1, 0)}
