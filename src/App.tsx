@@ -14,7 +14,9 @@ import {
   Volume2,
   VolumeX,
   Monitor,
-  Smartphone
+  Smartphone,
+  Music,
+  Music2
 } from 'lucide-react';
 
 // --- Constants ---
@@ -59,6 +61,240 @@ const getRandomPiece = (): Piece => {
   };
 };
 
+// --- Audio Manager ---
+class AudioManager {
+  private context: AudioContext | null = null;
+  private musicNodes: {
+    oscillator1: OscillatorNode;
+    oscillator2: OscillatorNode;
+    oscillator3: OscillatorNode;
+    gain1: GainNode;
+    gain2: GainNode;
+    gain3: GainNode;
+    masterGain: GainNode;
+  } | null = null;
+  private isMusicPlaying = false;
+  private musicSpeed = 1;
+  private musicInterval: number | null = null;
+  private enabled = true;
+
+  constructor() {
+    this.initAudio = this.initAudio.bind(this);
+  }
+
+  private initAudio() {
+    if (this.context) return;
+    try {
+      this.context = new (window.AudioContext || (window as any).webkitAudioContext)();
+    } catch (e) {
+      console.warn('Web Audio API not supported');
+    }
+  }
+
+  async enable() {
+    this.enabled = true;
+    this.initAudio();
+    if (this.context?.state === 'suspended') {
+      await this.context.resume();
+    }
+  }
+
+  disable() {
+    this.enabled = false;
+    this.stopMusic();
+    if (this.context) {
+      this.context.close();
+      this.context = null;
+    }
+  }
+
+  // Sound Effects
+  playMove() {
+    if (!this.enabled || !this.context) return;
+    this.playTone(150, 0.05, 'sine', 0.1);
+  }
+
+  playRotate() {
+    if (!this.enabled || !this.context) return;
+    this.playTone(300, 0.08, 'triangle', 0.1);
+  }
+
+  playDrop() {
+    if (!this.enabled || !this.context) return;
+    const now = this.context.currentTime;
+    const osc = this.context.createOscillator();
+    const gain = this.context.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(200, now);
+    osc.frequency.exponentialRampToValueAtTime(50, now + 0.15);
+
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+    osc.connect(gain);
+    gain.connect(this.context.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.15);
+  }
+
+  playClear(lines: number) {
+    if (!this.enabled || !this.context) return;
+    const now = this.context.currentTime;
+    const baseFreq = 400;
+
+    for (let i = 0; i < lines; i++) {
+      setTimeout(() => {
+        this.playTone(baseFreq + i * 100, 0.1, 'square', 0.15);
+      }, i * 100);
+    }
+  }
+
+  playGameOver() {
+    if (!this.enabled || !this.context) return;
+    const now = this.context.currentTime;
+
+    for (let i = 0; i < 4; i++) {
+      const osc = this.context!.createOscillator();
+      const gain = this.context!.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(300 - i * 50, now + i * 0.1);
+
+      gain.gain.setValueAtTime(0.15, now + i * 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.1 + 0.2);
+
+      osc.connect(gain);
+      gain.connect(this.context!.destination);
+
+      osc.start(now + i * 0.1);
+      osc.stop(now + i * 0.1 + 0.2);
+    }
+  }
+
+  private playTone(freq: number, duration: number, type: OscillatorType = 'sine', volume = 0.1) {
+    if (!this.context) return;
+
+    const now = this.context.currentTime;
+    const osc = this.context.createOscillator();
+    const gain = this.context.createGain();
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+    osc.connect(gain);
+    gain.connect(this.context.destination);
+
+    osc.start(now);
+    osc.stop(now + duration);
+  }
+
+  // Dynamic Chiptune Music
+  startMusic(level: number) {
+    if (!this.enabled || !this.context || this.isMusicPlaying) return;
+
+    this.isMusicPlaying = true;
+    this.musicSpeed = Math.max(0.5, 1 - (level - 1) * 0.1);
+    this.playMusicLoop();
+  }
+
+  stopMusic() {
+    this.isMusicPlaying = false;
+    if (this.musicInterval) {
+      clearInterval(this.musicInterval);
+      this.musicInterval = null;
+    }
+    if (this.musicNodes) {
+      try {
+        this.musicNodes.oscillator1.stop();
+        this.musicNodes.oscillator2.stop();
+        this.musicNodes.oscillator3.stop();
+      } catch (e) { }
+      this.musicNodes = null;
+    }
+  }
+
+  updateMusicSpeed(level: number) {
+    this.musicSpeed = Math.max(0.5, 1 - (level - 1) * 0.1);
+    if (this.isMusicPlaying) {
+      this.stopMusic();
+      this.startMusic(level);
+    }
+  }
+
+  private playMusicLoop() {
+    if (!this.context || !this.isMusicPlaying) return;
+
+    const now = this.context.currentTime;
+
+    // Create oscillators for a simple chiptune melody
+    const osc1 = this.context.createOscillator();
+    const osc2 = this.context.createOscillator();
+    const osc3 = this.context.createOscillator();
+
+    const gain1 = this.context.createGain();
+    const gain2 = this.context.createGain();
+    const gain3 = this.context.createGain();
+    const masterGain = this.context.createGain();
+
+    osc1.type = 'square';
+    osc2.type = 'triangle';
+    osc3.type = 'sawtooth';
+
+    osc1.connect(gain1);
+    osc2.connect(gain2);
+    osc3.connect(gain3);
+
+    gain1.connect(masterGain);
+    gain2.connect(masterGain);
+    gain3.connect(masterGain);
+
+    masterGain.connect(this.context.destination);
+    masterGain.gain.setValueAtTime(0.1, now);
+
+    this.musicNodes = { oscillator1: osc1, oscillator2: osc2, oscillator3: osc3, gain1, gain2, gain3, masterGain };
+
+    // Simple chiptune melody pattern (C major arpeggio)
+    const notes = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5
+    let noteIndex = 0;
+
+    const playNote = () => {
+      if (!this.isMusicPlaying || !this.musicNodes) return;
+
+      const now = this.context!.currentTime;
+      const freq = notes[noteIndex % notes.length];
+
+      this.musicNodes.oscillator1.frequency.setValueAtTime(freq, now);
+      this.musicNodes.oscillator2.frequency.setValueAtTime(freq * 2, now);
+      this.musicNodes.oscillator3.frequency.setValueAtTime(freq * 4, now);
+
+      this.musicNodes.gain1.gain.setValueAtTime(0.1, now);
+      this.musicNodes.gain2.gain.setValueAtTime(0.05, now);
+      this.musicNodes.gain3.gain.setValueAtTime(0.02, now);
+
+      this.musicNodes.gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.1 * this.musicSpeed);
+      this.musicNodes.gain2.gain.exponentialRampToValueAtTime(0.005, now + 0.1 * this.musicSpeed);
+      this.musicNodes.gain3.gain.exponentialRampToValueAtTime(0.002, now + 0.1 * this.musicSpeed);
+
+      noteIndex++;
+    };
+
+    // Start oscillators
+    osc1.start(now);
+    osc2.start(now);
+    osc3.start(now);
+
+    // Schedule notes
+    const baseInterval = 150 * this.musicSpeed;
+    playNote();
+    this.musicInterval = window.setInterval(playNote, baseInterval);
+  }
+}
+
 export default function App() {
   const [deviceType, setDeviceType] = useState<DeviceType>('desktop');
   const [grid, setGrid] = useState(createEmptyGrid());
@@ -73,12 +309,14 @@ export default function App() {
   const [paused, setPaused] = useState(false);
   const [highScore, setHighScore] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [musicEnabled, setMusicEnabled] = useState(true);
 
   const gameLoop = useRef<number>();
   const lastTime = useRef<number>(0);
   const dropCounter = useRef<number>(0);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const keysPressed = useRef<Set<string>>(new Set());
+  const audioManager = useRef<AudioManager>(new AudioManager());
 
   // Detect device type
   useEffect(() => {
@@ -92,6 +330,31 @@ export default function App() {
     window.addEventListener('resize', checkDevice);
     return () => window.removeEventListener('resize', checkDevice);
   }, []);
+
+  // Initialize audio
+  useEffect(() => {
+    if (soundEnabled || musicEnabled) {
+      audioManager.current.enable();
+    } else {
+      audioManager.current.disable();
+    }
+  }, [soundEnabled, musicEnabled]);
+
+  // Handle music based on game state
+  useEffect(() => {
+    if (musicEnabled && !paused && !gameOver && currentPiece) {
+      audioManager.current.startMusic(level);
+    } else {
+      audioManager.current.stopMusic();
+    }
+  }, [musicEnabled, paused, gameOver, currentPiece, level]);
+
+  // Update music speed when level changes
+  useEffect(() => {
+    if (musicEnabled) {
+      audioManager.current.updateMusicSpeed(level);
+    }
+  }, [level, musicEnabled]);
 
   // --- Game Logic ---
   const checkCollision = useCallback((piece: Piece, newPos = piece.pos, newShape = piece.shape) => {
@@ -154,22 +417,24 @@ export default function App() {
         if (newLevel > level) setLevel(newLevel);
         return total;
       });
+      if (soundEnabled) audioManager.current.playClear(linesCleared);
     }
 
     setGrid(clearedGrid);
     setCurrentPiece(null);
     setCanHold(true);
-  }, [currentPiece, grid, level]);
+  }, [currentPiece, grid, level, soundEnabled]);
 
   const spawnPiece = useCallback(() => {
     const piece = { ...nextPiece };
     if (checkCollision(piece)) {
       setGameOver(true);
+      if (soundEnabled) audioManager.current.playGameOver();
       return;
     }
     setCurrentPiece(piece);
     setNextPiece(getRandomPiece());
-  }, [nextPiece, checkCollision]);
+  }, [nextPiece, checkCollision, soundEnabled]);
 
   const movePiece = useCallback((dx: number, dy: number) => {
     if (!currentPiece || gameOver || paused) return false;
@@ -177,43 +442,46 @@ export default function App() {
     const newPos = { x: currentPiece.pos.x + dx, y: currentPiece.pos.y + dy };
     if (!checkCollision(currentPiece, newPos)) {
       setCurrentPiece({ ...currentPiece, pos: newPos });
+      if (dx !== 0 && soundEnabled) audioManager.current.playMove();
       return true;
     }
 
     if (dy > 0) {
       mergePiece();
+      if (soundEnabled) audioManager.current.playDrop();
     }
     return false;
-  }, [currentPiece, gameOver, paused, checkCollision, mergePiece]);
+  }, [currentPiece, gameOver, paused, checkCollision, mergePiece, soundEnabled]);
 
   const rotatePiece = useCallback(() => {
     if (!currentPiece || gameOver || paused) return;
     const rotated = rotateShape(currentPiece.shape);
     if (!checkCollision(currentPiece, currentPiece.pos, rotated)) {
       setCurrentPiece({ ...currentPiece, shape: rotated });
+      if (soundEnabled) audioManager.current.playRotate();
     }
-  }, [currentPiece, gameOver, paused, checkCollision]);
+  }, [currentPiece, gameOver, paused, checkCollision, soundEnabled]);
 
   const hardDrop = useCallback(() => {
     if (!currentPiece || gameOver || paused) return;
 
-    // Calculate final position
     let y = currentPiece.pos.y;
     while (!checkCollision(currentPiece, { ...currentPiece.pos, y: y + 1 })) {
       y++;
     }
 
-    // Create final piece position
     const finalPiece = {
       ...currentPiece,
       pos: { ...currentPiece.pos, y }
     };
 
-    // Merge immediately
-    mergePieceWithPiece(finalPiece);
-  }, [currentPiece, gameOver, paused, checkCollision]);
+    setCurrentPiece(finalPiece);
+    setTimeout(() => {
+      mergePieceWithPiece(finalPiece);
+      if (soundEnabled) audioManager.current.playDrop();
+    }, 10);
+  }, [currentPiece, gameOver, paused, checkCollision, soundEnabled]);
 
-  // Helper function to merge a specific piece
   const mergePieceWithPiece = useCallback((piece: Piece) => {
     if (!piece) return;
 
@@ -250,12 +518,13 @@ export default function App() {
         if (newLevel > level) setLevel(newLevel);
         return total;
       });
+      if (soundEnabled) audioManager.current.playClear(linesCleared);
     }
 
     setGrid(clearedGrid);
     setCurrentPiece(null);
     setCanHold(true);
-  }, [grid, level]);
+  }, [grid, level, soundEnabled]);
 
   const holdCurrentPiece = useCallback(() => {
     if (!currentPiece || !canHold || gameOver || paused) return;
@@ -273,7 +542,8 @@ export default function App() {
       setHoldPiece(temp);
     }
     setCanHold(false);
-  }, [currentPiece, holdPiece, canHold, gameOver, paused, spawnPiece]);
+    if (soundEnabled) audioManager.current.playRotate();
+  }, [currentPiece, holdPiece, canHold, gameOver, paused, spawnPiece, soundEnabled]);
 
   const resetGame = useCallback(() => {
     setGrid(createEmptyGrid());
@@ -342,14 +612,12 @@ export default function App() {
     if (deviceType !== 'desktop') return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Prevent default behavior for game controls
       if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'c', 'C', 'p', 'P', 'r', 'R'].includes(e.key)) {
         e.preventDefault();
       }
 
       if (gameOver || paused) return;
 
-      // Prevent repeated key events
       if (keysPressed.current.has(e.key)) return;
       keysPressed.current.add(e.key);
 
@@ -420,11 +688,9 @@ export default function App() {
     if (Math.max(absDx, absDy) < 20) return;
 
     if (absDx > absDy) {
-      // Horizontal swipe
       if (dx > 0) movePiece(1, 0);
       else movePiece(-1, 0);
     } else {
-      // Vertical swipe
       if (dy > 0) hardDrop();
       else rotatePiece();
     }
@@ -479,8 +745,16 @@ export default function App() {
             </div>
             <div className="flex items-center gap-4">
               <button
+                onClick={() => setMusicEnabled(!musicEnabled)}
+                className="p-2 bg-white/10 rounded-xl hover:bg-white/20"
+                title={musicEnabled ? "Disable music" : "Enable music"}
+              >
+                {musicEnabled ? <Music2 className="w-5 h-5" /> : <Music className="w-5 h-5" />}
+              </button>
+              <button
                 onClick={() => setSoundEnabled(!soundEnabled)}
                 className="p-2 bg-white/10 rounded-xl hover:bg-white/20"
+                title={soundEnabled ? "Disable sounds" : "Enable sounds"}
               >
                 {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
               </button>
@@ -682,7 +956,7 @@ export default function App() {
     );
   }
 
-  // Mobile Layout
+  // Mobile Layout - With visible buttons
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white">
       {/* Mobile Header */}
@@ -697,7 +971,16 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setSoundEnabled(!soundEnabled)} className="p-2">
+            <button
+              onClick={() => setMusicEnabled(!musicEnabled)}
+              className="p-2 bg-white/20 rounded-xl active:bg-white/30"
+            >
+              {musicEnabled ? <Music2 className="w-5 h-5" /> : <Music className="w-5 h-5" />}
+            </button>
+            <button
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className="p-2 bg-white/20 rounded-xl active:bg-white/30"
+            >
               {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
             </button>
           </div>
@@ -705,46 +988,46 @@ export default function App() {
       </div>
 
       {/* Mobile Score Bar */}
-      <div className="fixed top-14 left-0 right-0 bg-black/40 backdrop-blur-sm border-b border-white/5 z-10 px-4 py-2">
+      <div className="fixed top-14 left-0 right-0 bg-black/60 backdrop-blur-sm border-b border-white/10 z-10 px-4 py-2">
         <div className="flex justify-between items-center">
-          <div>
-            <div className="text-xs text-white/40">SCORE</div>
-            <div className="font-mono font-bold text-lg text-blue-400">{score}</div>
+          <div className="bg-black/40 px-3 py-1 rounded-xl">
+            <div className="text-[10px] text-white/40">SCORE</div>
+            <div className="font-mono font-bold text-base text-blue-400">{score}</div>
           </div>
-          <div className="text-center">
-            <div className="text-xs text-white/40">LEVEL</div>
-            <div className="font-mono font-bold text-lg text-orange-400">{level}</div>
+          <div className="bg-black/40 px-3 py-1 rounded-xl">
+            <div className="text-[10px] text-white/40">LEVEL</div>
+            <div className="font-mono font-bold text-base text-orange-400">{level}</div>
           </div>
-          <div className="text-right">
-            <div className="text-xs text-white/40">BEST</div>
-            <div className="font-mono font-bold text-lg text-emerald-400">{highScore}</div>
+          <div className="bg-black/40 px-3 py-1 rounded-xl">
+            <div className="text-[10px] text-white/40">BEST</div>
+            <div className="font-mono font-bold text-base text-emerald-400">{highScore}</div>
           </div>
         </div>
       </div>
 
       {/* Mobile Game Area */}
-      <div className="pt-28 px-4 pb-4">
+      <div className="pt-28 px-3 pb-4">
         {/* Game Board with Previews */}
         <div className="relative aspect-[1/2] w-full mb-4">
-          {/* Hold Preview */}
-          <div className="absolute -left-16 top-0 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 p-2 w-14">
-            <div className="text-[10px] text-white/40 text-center mb-1">HOLD</div>
-            <div className="flex justify-center">
+          {/* Hold Preview - Made more visible */}
+          <div className="absolute -left-16 top-0 bg-black/60 backdrop-blur-md rounded-xl border-2 border-white/20 p-2 w-14 z-20">
+            <div className="text-[10px] text-white/60 text-center mb-1 font-bold">HOLD</div>
+            <div className="flex justify-center bg-black/40 rounded-lg p-1">
               {renderPiece(holdPiece, 'w-3 h-3')}
             </div>
           </div>
 
-          {/* Next Preview */}
-          <div className="absolute -right-16 top-0 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 p-2 w-14">
-            <div className="text-[10px] text-white/40 text-center mb-1">NEXT</div>
-            <div className="flex justify-center">
+          {/* Next Preview - Made more visible */}
+          <div className="absolute -right-16 top-0 bg-black/60 backdrop-blur-md rounded-xl border-2 border-white/20 p-2 w-14 z-20">
+            <div className="text-[10px] text-white/60 text-center mb-1 font-bold">NEXT</div>
+            <div className="flex justify-center bg-black/40 rounded-lg p-1">
               {renderPiece(nextPiece, 'w-3 h-3')}
             </div>
           </div>
 
           {/* Main Board */}
           <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-md rounded-3xl border-4 border-white/10 shadow-2xl overflow-hidden touch-none"
+            className="absolute inset-0 bg-black/60 backdrop-blur-md rounded-3xl border-4 border-white/20 shadow-2xl overflow-hidden touch-none"
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
             onTouchMove={(e) => e.preventDefault()}
@@ -784,7 +1067,7 @@ export default function App() {
                   return (
                     <div
                       key={`${y}-${x}`}
-                      className="border-[0.5px] border-white/5"
+                      className="border-[0.5px] border-white/10"
                       style={{
                         backgroundColor: bgColor,
                         opacity,
@@ -836,73 +1119,85 @@ export default function App() {
           </div>
         </div>
 
-        {/* Mobile Touch Controls */}
-        <div className="grid grid-cols-4 gap-2 mt-4">
+        {/* Mobile Touch Controls - Made bigger and more visible */}
+        <div className="grid grid-cols-4 gap-3 mt-4">
           <button
             onClick={() => movePiece(-1, 0)}
-            className="aspect-square bg-white/10 backdrop-blur-md rounded-2xl active:bg-white/20 transition-colors flex items-center justify-center"
+            className="aspect-square bg-blue-600/80 backdrop-blur-md rounded-2xl active:bg-blue-500 transition-colors flex items-center justify-center shadow-lg border-2 border-white/20"
+            style={{ minHeight: '70px' }}
           >
-            <ChevronLeft className="w-8 h-8" />
+            <ChevronLeft className="w-10 h-10" />
           </button>
 
           <button
             onClick={() => movePiece(1, 0)}
-            className="aspect-square bg-white/10 backdrop-blur-md rounded-2xl active:bg-white/20 transition-colors flex items-center justify-center"
+            className="aspect-square bg-blue-600/80 backdrop-blur-md rounded-2xl active:bg-blue-500 transition-colors flex items-center justify-center shadow-lg border-2 border-white/20"
+            style={{ minHeight: '70px' }}
           >
-            <ChevronRight className="w-8 h-8" />
+            <ChevronRight className="w-10 h-10" />
           </button>
 
           <button
             onClick={rotatePiece}
-            className="aspect-square bg-white/10 backdrop-blur-md rounded-2xl active:bg-white/20 transition-colors flex items-center justify-center"
+            className="aspect-square bg-purple-600/80 backdrop-blur-md rounded-2xl active:bg-purple-500 transition-colors flex items-center justify-center shadow-lg border-2 border-white/20"
+            style={{ minHeight: '70px' }}
           >
-            <RotateCw className="w-8 h-8" />
+            <RotateCw className="w-10 h-10" />
           </button>
 
           <button
             onClick={hardDrop}
-            className="aspect-square bg-gradient-to-br from-blue-500 to-purple-500 rounded-2xl active:opacity-80 transition-opacity flex items-center justify-center"
+            className="aspect-square bg-orange-600/80 backdrop-blur-md rounded-2xl active:bg-orange-500 transition-colors flex items-center justify-center shadow-lg border-2 border-white/20"
+            style={{ minHeight: '70px' }}
           >
-            <Zap className="w-8 h-8" />
+            <Zap className="w-10 h-10" />
           </button>
         </div>
 
-        {/* Mobile Action Bar */}
-        <div className="grid grid-cols-2 gap-2 mt-2">
+        {/* Mobile Action Bar - Made bigger */}
+        <div className="grid grid-cols-2 gap-3 mt-3">
           <button
             onClick={holdCurrentPiece}
             disabled={!canHold || gameOver || paused}
-            className="py-4 bg-white/10 backdrop-blur-md rounded-2xl active:bg-white/20 transition-colors font-bold disabled:opacity-50"
+            className="py-5 bg-green-600/80 backdrop-blur-md rounded-2xl active:bg-green-500 transition-colors font-bold text-lg disabled:opacity-50 shadow-lg border-2 border-white/20"
           >
             HOLD
           </button>
 
           <button
             onClick={() => setPaused(!paused)}
-            className="py-4 bg-white/10 backdrop-blur-md rounded-2xl active:bg-white/20 transition-colors font-bold"
+            className="py-5 bg-yellow-600/80 backdrop-blur-md rounded-2xl active:bg-yellow-500 transition-colors font-bold text-lg shadow-lg border-2 border-white/20"
           >
             {paused ? 'RESUME' : 'PAUSE'}
           </button>
         </div>
 
+        {/* Reset Button */}
+        <button
+          onClick={resetGame}
+          className="w-full mt-3 py-4 bg-red-600/80 backdrop-blur-md rounded-2xl active:bg-red-500 transition-colors font-bold text-lg shadow-lg border-2 border-white/20"
+        >
+          NEW GAME
+        </button>
+
         {/* Mobile Progress */}
         <div className="mt-4">
-          <div className="bg-white/5 rounded-full h-2 overflow-hidden">
+          <div className="bg-white/20 rounded-full h-3 overflow-hidden border border-white/10">
             <div
               className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
               style={{ width: `${(lines % 10) * 10}%` }}
             />
           </div>
-          <div className="flex justify-between text-xs text-white/40 mt-2">
-            <span>{lines} LINES</span>
-            <span>{10 - (lines % 10)} TO NEXT LEVEL</span>
+          <div className="flex justify-between text-xs text-white/60 mt-2 px-1">
+            <span className="font-bold">{lines} LINES</span>
+            <span className="font-bold">{10 - (lines % 10)} TO NEXT LEVEL</span>
           </div>
         </div>
 
         {/* Swipe Hint */}
-        <div className="mt-4 bg-blue-500/10 rounded-xl p-3 text-xs text-blue-400 text-center">
-          <p className="font-bold mb-1">👆 SWIPE CONTROLS</p>
-          <p className="text-white/60">Swipe left/right to move • Up to rotate • Down for hard drop</p>
+        <div className="mt-4 bg-blue-600/30 backdrop-blur-md rounded-2xl p-4 text-sm text-blue-300 text-center border-2 border-blue-500/30">
+          <p className="font-bold mb-2 text-base">👆 SWIPE CONTROLS</p>
+          <p className="text-white/80">←→ Move • ↑ Rotate • ↓ Hard Drop</p>
         </div>
       </div>
     </div>
